@@ -64,6 +64,8 @@ class Source(models.Model):
                 img = Image.open(self.file)
                 if img.width > MAX_IMG_WIDTH or img.height > MAX_IMG_HEIGHT:
                     raise ValidationError({'file': f"Image resolution must be at most {MAX_IMG_WIDTH}x{MAX_IMG_HEIGHT}"})
+                # Cache dimensions to avoid reopening image in pre_save
+                self._cached_img_dimensions = (img.width, img.height)
             except Exception as e:
                 raise ValidationError({'file': f"Error opening image file: {e}"})
 
@@ -102,17 +104,21 @@ class Source(models.Model):
             playlist.meta_times_touch()
 
 @receiver(pre_save, sender=Source)
-def set_orig_file_hash(sender, instance=None, raw=False, **kwargs):
+def set_orig_file_hash_and_resolution(sender, instance=None, raw=False, **kwargs):
     instance._orig = None
     if instance is None or raw:
         return
 
     if instance.type == Source.IMAGE and instance.file:
-        try:
-            img = Image.open(instance.file)
-            instance.width, instance.height = img.width, img.height
-        except Exception:
-            instance.width = instance.height = None
+        # Use cached dimensions from clean() if available
+        if hasattr(instance, '_cached_img_dimensions'):
+            instance.width, instance.height = instance._cached_img_dimensions
+        else:
+            try:
+                img = Image.open(instance.file)
+                instance.width, instance.height = img.width, img.height
+            except Exception:
+                instance.width = instance.height = None
     else:
         instance.width = instance.height = None
 
