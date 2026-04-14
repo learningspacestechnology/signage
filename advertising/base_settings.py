@@ -135,9 +135,9 @@ UNFOLD = {
                 "collapsible": True,
                 "items": [
                     {
-                        "title": "Venues",
+                        "title": "Buildings",
                         "icon": "location_on",
-                        "link": reverse_lazy("admin:room_schedules_venue_changelist"),
+                        "link": reverse_lazy("admin:room_schedules_building_changelist"),
                     },
                     {
                         "title": "Rooms",
@@ -262,7 +262,7 @@ USE_I18N = True
 
 USE_L10N = True
 
-USE_TZ = False
+USE_TZ = True
 DJANGO_CELERY_BEAT_TZ_AWARE=False
 
 
@@ -277,8 +277,6 @@ MEDIA_URL = '/media/'
 FILE_UPLOAD_PERMISSIONS = 0o644
 
 
-ARTIFAX_API_KEY = "OVERRIDE THIS IN settings.py"
-ARTIFAX_BASE_ADDRESS = 'OVERRIDE THIS IN settings.py'
 AUTO_MAKE_SCREENS_FOR_NEW_IPS = False
 USE_LAST_FORWARDED_FOR_IP = False
 USE_FIRST_FORWARDED_FOR_IP = False
