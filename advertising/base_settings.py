@@ -80,6 +80,10 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'room_schedules.tasks.cleanup_schedule',
         'schedule': crontab(minute=0, hour=0),
     },
+    'sync-room-names-daily': {
+        'task': 'room_schedules.tasks.sync_room_names',
+        'schedule': crontab(minute=15, hour=2),
+    },
 }
 
 UNFOLD = {
@@ -143,6 +147,11 @@ UNFOLD = {
                         "title": "Rooms",
                         "icon": "meeting_room",
                         "link": reverse_lazy("admin:room_schedules_room_changelist"),
+                    },
+                    {
+                        "title": "Room Groups",
+                        "icon": "groups",
+                        "link": reverse_lazy("admin:room_schedules_roomgroup_changelist"),
                     },
                 ],
             },

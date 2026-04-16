@@ -14,6 +14,7 @@ dependencies = [
     "django-celery-results==2.6.0",
     "django-recurrence==1.14",
     "httplib2==0.31.2",
+    "httpx==0.27.2",
     "msal>=1.28.0",
     "pillow==12.1.1",
 ]
