@@ -33,16 +33,22 @@ def get_screen(request):
         return get_object_or_404(models.Screen, id=referer_match.kwargs["screen_id"])
 
     # screen is from the auto url
+    ip = get_client_ip(request)
+    screen = models.Screen.objects.filter(ip=ip).first()
+    if screen:
+        return screen
+
     if AUTO_MAKE_SCREENS_FOR_NEW_IPS:
-        ip = get_client_ip(request)
-        (screen, _) = models.Screen.objects.get_or_create(ip=ip,
-                                                          defaults={'name': get_client_hostname(ip),
-                                                                    'schedule': models.Schedule.get_default()})
-    else:
-        ip = "255.255.255.255"
-        (screen, _) = models.Screen.objects.get_or_create(ip=ip, name="DEFAULT",
-                                                          defaults={'name': "DEFAULT",
-                                                                    'schedule': models.Schedule.get_default()})
+        return models.Screen.objects.create(
+            ip=ip,
+            name=get_client_hostname(ip),
+            schedule=models.Schedule.get_default(),
+        )
+
+    (screen, _) = models.Screen.objects.get_or_create(
+        ip="255.255.255.255", name="DEFAULT",
+        defaults={'schedule': models.Schedule.get_default()},
+    )
     return screen
 
 
