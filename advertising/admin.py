@@ -6,6 +6,17 @@ from unfold.admin import ModelAdmin
 from unfold.forms import AdminPasswordChangeForm, UserChangeForm, UserCreationForm
 from unfold.widgets import UnfoldAdminSelectWidget, UnfoldAdminTextInputWidget
 
+from room_schedules.admin import get_o365_admin_urls
+
+_original_admin_get_urls = admin.site.get_urls
+
+
+def _patched_admin_get_urls():
+    return get_o365_admin_urls() + _original_admin_get_urls()
+
+
+admin.site.get_urls = _patched_admin_get_urls
+
 from django_celery_beat.models import (
     ClockedSchedule,
     CrontabSchedule,
