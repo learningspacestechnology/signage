@@ -20,6 +20,7 @@ import advertising.admin  # noqa: F401 — registers celery admin with unfold st
 from django.views.generic import RedirectView
 
 from advertising import settings
+from advertising.views import serve_media
 from screens import views as screenviews
 
 urlpatterns = [
@@ -35,7 +36,11 @@ urlpatterns = [
     path('meta', screenviews.get_meta, name="screen-meta-view"),
     path('api/meta', screenviews.get_meta, name="screen-meta-view"),
     path('api/meta/<int:screen_id>', screenviews.get_meta_screen, name="screen-meta-view-specific"),
-] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    path('media/<path:path>', serve_media),
+]
+
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
 if "room_schedules" in settings.INSTALLED_APPS:
     from room_schedules import urls as room_schedules_urls
