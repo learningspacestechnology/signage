@@ -5,7 +5,7 @@ from django.urls import resolve, Resolver404
 from urllib.parse import urlparse
 from screens import models
 from datetime import datetime
-from advertising.settings import AUTO_MAKE_SCREENS_FOR_NEW_IPS, USE_LAST_FORWARDED_FOR_IP, USE_FIRST_FORWARDED_FOR_IP
+from advertising.settings import AUTO_MAKE_SCREENS_FOR_NEW_IPS, USE_LAST_FORWARDED_FOR_IP, USE_FIRST_FORWARDED_FOR_IP, UNCONFIGURED_SCREEN_MESSAGE
 import socket
 
 def get_client_ip(request):
@@ -45,15 +45,31 @@ def get_screen(request):
             schedule=models.Schedule.get_default(),
         )
 
-    (screen, _) = models.Screen.objects.get_or_create(
-        ip="255.255.255.255", name="DEFAULT",
-        defaults={'schedule': models.Schedule.get_default()},
-    )
-    return screen
+    return None
+
+
+def _render_unconfigured(request):
+    ip = get_client_ip(request)
+    return render(request, 'screens/unconfigured_screen.html', {
+        'ip': ip,
+        'hostname': get_client_hostname(ip),
+        'message': UNCONFIGURED_SCREEN_MESSAGE,
+    }, status=404)
+
+
+def _unconfigured_json(request):
+    ip = get_client_ip(request)
+    return JsonResponse({
+        "error": "screen not configured",
+        "ip": ip,
+        "hostname": get_client_hostname(ip),
+    }, status=404)
 
 
 def view_screen_automatic(request):
     screen = get_screen(request)
+    if screen is None:
+        return _render_unconfigured(request)
     return view_screen(request, screen.id)
 
 
@@ -93,6 +109,8 @@ def view_playlist(request, playlist_id):
 
 def view_screen_automatic_json(request):
     screen = get_screen(request)
+    if screen is None:
+        return _unconfigured_json(request)
     return view_screen_json(request, screen.id)
 
 
@@ -163,6 +181,8 @@ def _get_meta(request, screen):
 
 def get_meta(request):
     screen = get_screen(request)
+    if screen is None:
+        return _unconfigured_json(request)
     return _get_meta(request, screen)
 
 

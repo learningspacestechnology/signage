@@ -1,0 +1,219 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="refresh" content="60">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Screen not configured</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --edgel-brand: #041e42;
+            --edgel-accent: #d50032;
+            --edgel-body-color: #3a3a3a;
+            --edgel-body-bg: #e8e8e8;
+            --edgel-card-bg: #ffffff;
+            --edgel-border-color: #8e8e8e;
+            --edgel-muted: #707070;
+            --edgel-tertiary-bg: #f9f9f9;
+            --edgel-font-sans-serif: "Source Sans Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            --edgel-font-monospace: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+
+            --edgel-card-cap-padding-y: 0.75rem;
+            --edgel-card-cap-padding-x: 4vw;
+            --edgel-card-spacer-x: 4vw;
+            --edgel-card-spacer-y: 2vh;
+            --edgel-card-cap-bg: var(--edgel-brand);
+            --edgel-card-cap-color: #ffffff;
+            --edgel-display-font-size: calc(1.53607rem + 0.84857vw);
+            --edgel-small-font-size: calc(0.8325rem + 0.145vw);
+        }
+        @media (min-width: 1600px) {
+            :root {
+                --edgel-display-font-size: 2.38464rem;
+                --edgel-small-font-size: 0.9775rem;
+            }
+        }
+
+        *, *::before, *::after { box-sizing: border-box; }
+        html, body { height: 100%; margin: 0; overflow: hidden; }
+        body {
+            background-color: var(--edgel-body-bg);
+            color: var(--edgel-body-color);
+            font-family: var(--edgel-font-sans-serif);
+            font-size: 1.15rem;
+            font-weight: 400;
+            line-height: 1.5;
+        }
+
+        .card-display {
+            height: 100vh;
+            background-color: transparent;
+            display: flex;
+            flex-direction: column;
+        }
+        .card-display > .card-header {
+            padding: var(--edgel-card-cap-padding-y) var(--edgel-card-cap-padding-x);
+            background-color: var(--edgel-card-cap-bg);
+            color: var(--edgel-card-cap-color);
+            border-bottom: 8px solid var(--edgel-accent);
+            display: grid;
+            grid-template-columns: minmax(16rem, 1fr) auto minmax(16rem, 1fr);
+            column-gap: 4rem;
+            align-items: center;
+            justify-content: stretch;
+        }
+        .card-display > .card-footer {
+            padding: var(--edgel-card-cap-padding-y) var(--edgel-card-cap-padding-x);
+            background-color: var(--edgel-card-cap-bg);
+            color: var(--edgel-card-cap-color);
+            font-size: var(--edgel-display-font-size);
+        }
+        .card-display > .card-body {
+            flex: 1 1 auto;
+            padding: var(--edgel-card-spacer-y) var(--edgel-card-spacer-x);
+            overflow-y: auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        @media (max-width: 900px) {
+            .card-display > .card-header {
+                column-gap: 1rem;
+                --edgel-card-cap-padding-x: 2vw;
+            }
+        }
+
+        .masthead-logo {
+            width: 100%;
+            max-width: 20.75rem;
+            height: auto;
+            max-height: 4.9375rem;
+            vertical-align: top;
+        }
+        .display-heading {
+            font-size: var(--edgel-display-font-size);
+            font-weight: 700;
+            text-align: center;
+            margin: 0;
+            line-height: 1.2;
+        }
+        .display-clock {
+            font-size: var(--edgel-display-font-size);
+            font-weight: 700;
+            line-height: 1.2;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            justify-content: center;
+            font-variant-numeric: tabular-nums;
+        }
+        .display-clock .display-small {
+            font-size: 50%;
+            font-weight: 400;
+            line-height: 1.2;
+        }
+        .card-footer .small { font-size: var(--edgel-small-font-size); }
+        .card-footer .text-end { text-align: right; }
+
+        .unconfigured-card {
+            background-color: var(--edgel-card-bg);
+            border: 1px solid var(--edgel-border-color);
+            border-radius: 0.25rem;
+            max-width: 56rem;
+            width: 100%;
+            padding: 3rem;
+            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.08);
+        }
+        .unconfigured-card h2 {
+            color: var(--edgel-brand);
+            font-weight: 700;
+            font-size: clamp(1.5rem, 2.8vw, 2.25rem);
+            margin: 0 0 0.75rem 0;
+            line-height: 1.2;
+        }
+        .unconfigured-card p {
+            font-size: clamp(1.05rem, 1.4vw, 1.25rem);
+            margin: 0 0 2rem 0;
+        }
+        .details {
+            background-color: var(--edgel-tertiary-bg);
+            border: 1px solid var(--edgel-border-color);
+            border-radius: 0.25rem;
+            padding: 1.25rem 1.5rem;
+            margin: 0;
+        }
+        .details-row { padding: 0.4rem 0; display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; }
+        .details-row + .details-row { border-top: 1px solid var(--edgel-border-color); }
+        .details-label {
+            flex: 0 0 9rem;
+            color: var(--edgel-muted);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            font-size: 0.85rem;
+            align-self: center;
+        }
+        .details-value {
+            font-family: var(--edgel-font-monospace);
+            font-weight: 600;
+            word-break: break-all;
+            margin: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="card card-display">
+        <header class="card-header">
+            <img class="masthead-logo" src="{% static 'screens/images/uoe-logo.png' %}" alt="The University of Edinburgh">
+            <h1 class="display-heading">Screen not configured</h1>
+            <div class="display-clock">
+                <div id="clock">--:--</div>
+                <div class="display-small" id="date">&nbsp;</div>
+            </div>
+        </header>
+        <main class="card-body">
+            <div class="unconfigured-card">
+                <h2>This screen has not been configured</h2>
+                <p>{{ message }}</p>
+                <dl class="details">
+                    <div class="details-row">
+                        <dt class="details-label">Hostname</dt>
+                        <dd class="details-value">{{ hostname }}</dd>
+                    </div>
+                    <div class="details-row">
+                        <dt class="details-label">IP address</dt>
+                        <dd class="details-value">{{ ip }}</dd>
+                    </div>
+                </dl>
+            </div>
+        </main>
+        <footer class="card-footer">
+            <div class="small text-end" id="last-refreshed">Last refreshed:</div>
+        </footer>
+    </div>
+    <script>
+        (function () {
+            function pad(n) { return n < 10 ? "0" + n : String(n); }
+            var DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+            var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+            var clockEl = document.getElementById("clock");
+            var dateEl = document.getElementById("date");
+            var refreshedEl = document.getElementById("last-refreshed");
+            var loadedAt = new Date();
+            var timePart = pad(loadedAt.getHours()) + ":" + pad(loadedAt.getMinutes());
+            var datePart = pad(loadedAt.getDate()) + "-" + pad(loadedAt.getMonth() + 1) + "-" + loadedAt.getFullYear();
+            refreshedEl.textContent = "Last refreshed: " + datePart + " " + timePart;
+            function tick() {
+                var d = new Date();
+                clockEl.textContent = pad(d.getHours()) + ":" + pad(d.getMinutes());
+                dateEl.textContent = DAYS[d.getDay()] + " " + d.getDate() + " " + MONTHS[d.getMonth()];
+            }
+            tick();
+            setInterval(tick, 1000);
+        })();
+    </script>
+</body>
+</html>
