@@ -205,6 +205,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'advertising.middleware.IpAccessControlMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -295,6 +296,7 @@ FILE_UPLOAD_PERMISSIONS = 0o644
 AUTO_MAKE_SCREENS_FOR_NEW_IPS = False
 USE_LAST_FORWARDED_FOR_IP = False
 USE_FIRST_FORWARDED_FOR_IP = False
+IP_ACCESS_CONTROL_ENABLED = True
 UNCONFIGURED_SCREEN_MESSAGE = ("To get this display set up, please contact your local IT support team and provide the details below.")
 MAX_IMG_WIDTH = 1920
 MAX_IMG_HEIGHT = 1080

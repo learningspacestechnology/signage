@@ -4,24 +4,9 @@ from django.shortcuts import render, get_object_or_404
 from django.urls import resolve, Resolver404
 from urllib.parse import urlparse
 from screens import models
+from screens.utils import get_client_ip, get_client_hostname
 from datetime import datetime
-from advertising.settings import AUTO_MAKE_SCREENS_FOR_NEW_IPS, USE_LAST_FORWARDED_FOR_IP, USE_FIRST_FORWARDED_FOR_IP, UNCONFIGURED_SCREEN_MESSAGE
-import socket
-
-def get_client_ip(request):
-    if USE_LAST_FORWARDED_FOR_IP:
-        return request.META.get('HTTP_X_FORWARDED_FOR').split(",")[-1].strip()
-    if USE_FIRST_FORWARDED_FOR_IP:
-        return request.META.get('HTTP_X_FORWARDED_FOR').split(",")[0].strip()
-    ip = request.META.get('REMOTE_ADDR')
-    return ip
-
-
-def get_client_hostname(ip):
-    try:
-        return socket.gethostbyaddr(ip)[0] or "Unknown Device"
-    except socket.error:
-        return "Unknown Device"
+from advertising.settings import AUTO_MAKE_SCREENS_FOR_NEW_IPS, UNCONFIGURED_SCREEN_MESSAGE
 
 
 def get_screen(request):
