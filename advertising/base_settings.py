@@ -80,8 +80,8 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'room_schedules.tasks.cleanup_schedule',
         'schedule': crontab(minute=0, hour=0),
     },
-    'sync-room-names-daily': {
-        'task': 'room_schedules.tasks.sync_room_names',
+    'sync-o365-rooms-daily': {
+        'task': 'room_schedules.tasks.sync_o365_rooms',
         'schedule': crontab(minute=15, hour=2),
     },
 }
@@ -152,6 +152,12 @@ UNFOLD = {
                         "title": "Room Groups",
                         "icon": "groups",
                         "link": reverse_lazy("admin:room_schedules_roomgroup_changelist"),
+                    },
+                    {
+                        "title": "O365 rooms",
+                        "icon": "work",
+                        "link": reverse_lazy("admin:room_schedules_o365_assigned"),
+                        "active": lambda request: request.path.startswith("/admin/room_schedules/o365_"),
                     },
                 ],
             },
