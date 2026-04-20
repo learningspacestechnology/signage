@@ -33,7 +33,7 @@ def get_screen(request):
     return None
 
 
-def _render_unconfigured(request):
+def view_unconfigured(request):
     ip = get_client_ip(request)
     return render(request, 'screens/unconfigured_screen.html', {
         'ip': ip,
@@ -42,19 +42,28 @@ def _render_unconfigured(request):
     }, status=404)
 
 
+_UNCONFIGURED_PAYLOAD = {
+    "playlist": [{"src": "/api/unconfigured", "type": models.Source.IFRAME, "duration": 60}],
+    "interspersed": [],
+    "current_playlist": -1,
+    "playlist_last_updated": "1970-01-01T00:00:00",
+    "screen_id": None,
+}
+
+_UNCONFIGURED_META = {
+    "current_playlist": -1,
+    "playlist_last_updated": "1970-01-01T00:00:00",
+}
+
+
 def _unconfigured_json(request):
-    ip = get_client_ip(request)
-    return JsonResponse({
-        "error": "screen not configured",
-        "ip": ip,
-        "hostname": get_client_hostname(ip),
-    }, status=404)
+    return JsonResponse(_UNCONFIGURED_PAYLOAD)
 
 
 def view_screen_automatic(request):
     screen = get_screen(request)
     if screen is None:
-        return _render_unconfigured(request)
+        return view_unconfigured(request)
     return view_screen(request, screen.id)
 
 
@@ -106,7 +115,7 @@ def view_screen_json(request, screen_id):
             current_playlist = screen.schedule.get_playlist()
             return JsonResponse(render_playlist_json(current_playlist, screen_interspersed=screen.interspersed_source, screen_id=screen_id))
         else:
-            return JsonResponse({"error": "no schedule assigned to this screen"}, status=404)
+            return _unconfigured_json(request)
     except models.Screen.DoesNotExist:
         return JsonResponse({"error": "screen doesnt exist"}, status=404)
 
@@ -154,7 +163,7 @@ def view_playlist_tree_json(request):
 
 def _get_meta(request, screen):
     if screen.schedule is None:
-        return JsonResponse({"error": "no schedule assigned to this screen"}, status=404)
+        return JsonResponse(_UNCONFIGURED_META)
 
     playlist = screen.schedule.get_playlist()
     screen.last_seen = datetime.now()
@@ -167,7 +176,7 @@ def _get_meta(request, screen):
 def get_meta(request):
     screen = get_screen(request)
     if screen is None:
-        return _unconfigured_json(request)
+        return JsonResponse(_UNCONFIGURED_META)
     return _get_meta(request, screen)
 
 

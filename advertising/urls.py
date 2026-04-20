@@ -36,6 +36,7 @@ urlpatterns = [
     path('meta', screenviews.get_meta, name="screen-meta-view"),
     path('api/meta', screenviews.get_meta, name="screen-meta-view"),
     path('api/meta/<int:screen_id>', screenviews.get_meta_screen, name="screen-meta-view-specific"),
+    path('api/unconfigured', screenviews.view_unconfigured, name="screens/unconfigured"),
     path('media/<path:path>', serve_media),
 ]
 

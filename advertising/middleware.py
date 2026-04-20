@@ -15,6 +15,7 @@ SCREEN_DISCOVERY_PATHS = (
     '/screen/', '/screen',
     '/api/screen/', '/api/screen',
     '/meta', '/api/meta',
+    '/api/unconfigured',
 )
 
 
