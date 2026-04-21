@@ -7,15 +7,18 @@ from screens.utils import get_client_ip
 
 ALLOW_PREFIXES = ('/admin/', '/static/')
 
-# Endpoints whose views handle unregistered IPs themselves (auto-create when
-# AUTO_MAKE_SCREENS_FOR_NEW_IPS=True, otherwise render the "unconfigured screen"
-# page/JSON). These must always be reachable so a fresh device can announce
-# itself and the operator can read its IP off the unconfigured page.
+# Endpoints whose views handle unregistered IPs themselves — either by
+# auto-creating a Screen (when AUTO_MAKE_SCREENS_FOR_NEW_IPS=True) or by
+# rendering the "unconfigured screen" page/JSON. These must always be
+# reachable so a fresh device can announce itself and the operator can read
+# its IP off the unconfigured page. Only the root entry points are listed
+# here; sub-paths that require an explicit ID remain gated.
 SCREEN_DISCOVERY_PATHS = (
     '/screen/', '/screen',
     '/api/screen/', '/api/screen',
     '/meta', '/api/meta',
     '/api/unconfigured',
+    '/event_schedules/', '/event_schedules',
 )
 
 

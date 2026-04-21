@@ -43,7 +43,7 @@ def view_unconfigured(request):
 
 
 _UNCONFIGURED_PAYLOAD = {
-    "playlist": [{"src": "/api/unconfigured", "type": models.Source.IFRAME, "duration": 60}],
+    "playlist": [{"src": "/api/unconfigured", "type": models.Source.IFRAME, "duration": 3600}],
     "interspersed": [],
     "current_playlist": -1,
     "playlist_last_updated": "1970-01-01T00:00:00",

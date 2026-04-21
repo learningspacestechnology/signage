@@ -2,7 +2,6 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <meta http-equiv="refresh" content="60">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Screen not configured</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -162,6 +161,17 @@
             word-break: break-all;
             margin: 0;
         }
+
+        #screensaver {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 1000;
+            background-image: url('{% static "room_schedules/screensaver.jpg" %}');
+            background-position: center center;
+            background-size: cover;
+            background-repeat: no-repeat;
+        }
     </style>
 </head>
 <body>
@@ -194,6 +204,7 @@
             <div class="small text-end" id="last-refreshed">Last refreshed:</div>
         </footer>
     </div>
+    <div id="screensaver" aria-hidden="true"></div>
     <script>
         (function () {
             function pad(n) { return n < 10 ? "0" + n : String(n); }
@@ -213,6 +224,11 @@
             }
             tick();
             setInterval(tick, 1000);
+
+            setTimeout(function () {
+                document.getElementById("screensaver").style.display = "block";
+                setTimeout(function () { location.reload(); }, 1000);
+            }, 60000);
         })();
     </script>
 </body>
