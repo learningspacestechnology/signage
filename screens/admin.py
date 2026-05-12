@@ -32,7 +32,7 @@ class PlaylistDisplay(ModelAdmin):
     list_filter = ('plays_everything',)
     readonly_fields = ('last_updated',)
     fieldsets = [
-        (None, {'fields': ['name', 'description', 'plays_everything', 'interspersed_source', 'last_updated']}),
+        (None, {'fields': ['name', 'description', 'default_duration', 'plays_everything', 'interspersed_source', 'last_updated']}),
     ]
     inlines = [PlaylistParentsInline, PlaylistEntryInline]
 

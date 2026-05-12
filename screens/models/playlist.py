@@ -12,10 +12,14 @@ def flatten(t):
 
 class Playlist(models.Model):
     name = models.TextField()
-    description = models.TextField()
+    description = models.TextField(blank=True)
     plays_everything = models.BooleanField(default=False)
     interspersed_source = models.ForeignKey(Source, null=True, default=None, on_delete=models.SET_NULL, blank=True)
     last_updated = models.DateTimeField(auto_now=True)
+    default_duration = models.PositiveIntegerField(
+        default=10,
+        help_text="Default display time in seconds for entries that don't set their own duration (ignored for videos).",
+    )
     parents = models.ManyToManyField("self", related_name="children", symmetrical=False,
                                      through="PlaylistRelation", through_fields=("inheriting_list", "super_list"),
                                      help_text="All sources that would be played by these playlists will be included in this one too.", blank=True)
@@ -41,6 +45,16 @@ class Playlist(models.Model):
                         .filter(Q(source__valid_from__lte=now) | Q(source__valid_from__isnull=True)) \
                         .filter(Q(source__expires_at__gte=now) | Q(source__expires_at__isnull=True)) \
                         .order_by('number')) + self.parent_sources(block_list)
+
+    def get_resolved_sources(self, block_list=None):
+        entries = self.get_sources(block_list)
+        if len(entries) == 1:
+            entries[0].duration = 3600
+        else:
+            for entry in entries:
+                if entry.duration is None:
+                    entry.duration = self.default_duration
+        return entries
 
     def meta_times_touch(self, block_list=None):
         if block_list is None:

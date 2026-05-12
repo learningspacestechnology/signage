@@ -73,7 +73,7 @@ def view_screen(request, screen_id):
         if screen.schedule:
             current_playlist = screen.schedule.get_playlist()
             view_dict = {
-                'playlist': current_playlist.get_sources(),
+                'playlist': current_playlist.get_resolved_sources(),
                 'interspersed': models.PlaylistEntry(source=current_playlist.interspersed_source),
                 'screen_interspersed': models.PlaylistEntry(source=screen.interspersed_source),
                 "current_playlist": current_playlist.pk,
@@ -91,7 +91,7 @@ def view_playlist(request, playlist_id):
     try:
         current_playlist = models.Playlist.objects.get(id=playlist_id)
         view_dict = {
-            'playlist': current_playlist.get_sources(),
+            'playlist': current_playlist.get_resolved_sources(),
             'interspersed': models.PlaylistEntry(source=current_playlist.interspersed_source),
             "current_playlist": current_playlist.pk,
             "playlist_last_updated": current_playlist.last_updated.isoformat()
@@ -137,7 +137,7 @@ def render_playlist_json(playlist, screen_interspersed=None, screen_id=None):
             {"src": screen_interspersed.src(), "type": screen_interspersed.type})
 
     return {
-        'playlist': list(map(lambda x: {"src": x.source.src(), "type": x.source.type, "duration": x.duration}, playlist.get_sources())),
+        'playlist': list(map(lambda x: {"src": x.source.src(), "type": x.source.type, "duration": x.duration}, playlist.get_resolved_sources())),
         'interspersed': interspersed,
         "current_playlist": playlist.pk,
         "playlist_last_updated": playlist.last_updated.isoformat(),

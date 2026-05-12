@@ -10,8 +10,8 @@ class PlaylistEntry(models.Model):
     playlist = models.ForeignKey("Playlist", on_delete=models.CASCADE)
     source = models.ForeignKey(Source, on_delete=models.CASCADE)
     number = models.IntegerField()
-    duration = models.IntegerField(default=10, null=True, blank=True,
-                                   help_text="number of seconds to display source for (ignored for videos)")
+    duration = models.IntegerField(null=True, blank=True,
+                                   help_text="seconds to display source for; leave blank to use the playlist's default duration (ignored for videos)")
 
     class Meta:
         ordering = ['number']

@@ -7,7 +7,7 @@ from screens.models import Playlist
 
 class Schedule(models.Model):
     name = models.TextField()
-    description = models.TextField()
+    description = models.TextField(blank=True)
     default_playlist = models.ForeignKey(Playlist, on_delete=models.PROTECT)
     is_default = models.BooleanField(default=False)
 
