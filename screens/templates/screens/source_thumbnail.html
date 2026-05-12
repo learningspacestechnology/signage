@@ -1,0 +1,7 @@
+{% if source.type == "IMG" %}
+    <img src="{{ source.file.url }}" loading="lazy" style="max-width: 80px; max-height: 60px;">
+{% elif source.type == "VID" %}
+    <video src="{{ source.file.url }}" preload="metadata" muted style="max-width: 80px; max-height: 60px;"></video>
+{% elif source.type == "FRM" %}
+    <span style="font-size: 0.85em;">Website</span>
+{% endif %}

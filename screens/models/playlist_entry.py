@@ -1,6 +1,7 @@
 from django.db import models
 from django.db.models.signals import pre_delete, pre_save
 from django.dispatch import receiver
+from django.template.loader import get_template
 
 from screens.models.source import Source
 
@@ -17,6 +18,12 @@ class PlaylistEntry(models.Model):
 
     def __str__(self):
         return ""
+
+    def thumbnail(self):
+        if self.source_id is None:
+            return ""
+        return get_template("screens/source_thumbnail.html").render({"source": self.source})
+    thumbnail.short_description = "Preview"
 
 
 @receiver(pre_delete, sender=PlaylistEntry)

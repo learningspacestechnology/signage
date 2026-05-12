@@ -13,7 +13,8 @@ class PlaylistEntryInline(OrderableAdmin, TabularInline):
     model = PlaylistEntry
     ordering_field = 'number'
     extra = 0
-    fields = ('number', 'source', 'duration')
+    fields = ('number', 'thumbnail', 'source', 'duration')
+    readonly_fields = ('thumbnail',)
 
 
 class PlaylistParentsInline(TabularInline):
