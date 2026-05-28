@@ -47,6 +47,7 @@ class Source(models.Model):
                                        through="PlaylistEntry", through_fields=("source", "playlist"),
                                        help_text="All sources that would be played by these playlists will be included in this one too.",
                                        blank=True)
+    teams = models.ManyToManyField("screens.Team", related_name="sources")
 
 
     def __str__(self):
@@ -55,6 +56,8 @@ class Source(models.Model):
     def clean(self):
         if hasattr(self, "bulk_create") and self.bulk_create:
             return
+        if self.pk and not self.teams.exists():
+            raise ValidationError("Source must belong to at least one team.")
         if self.type in [self.IMAGE, self.VIDEO] and self.file.name is None:
             raise ValidationError({'file': "File cannot be blank for image or video type sources"})
         if self.type == self.VIDEO and self.file.name[-4:] != ".mp4":

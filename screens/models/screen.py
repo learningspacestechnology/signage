@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.template.loader import get_template
 from django.urls import reverse
@@ -20,6 +21,12 @@ class Screen(models.Model):
                                             help_text="Optional (you probably want an event schedule here)")
     ip = models.GenericIPAddressField()
     last_seen = models.DateTimeField(auto_now_add=True, blank=True)
+    teams = models.ManyToManyField("screens.Team", related_name="screens")
+
+    def clean(self):
+        super().clean()
+        if self.pk and not self.teams.exists():
+            raise ValidationError("Screen must belong to at least one team.")
     
     def online(self):
         return self.last_seen and self.last_seen >= timezone.now()-timedelta(minutes=1)

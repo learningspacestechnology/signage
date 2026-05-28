@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 from datetime import timedelta
@@ -10,6 +11,12 @@ class Schedule(models.Model):
     description = models.TextField(blank=True)
     default_playlist = models.ForeignKey(Playlist, on_delete=models.PROTECT)
     is_default = models.BooleanField(default=False)
+    teams = models.ManyToManyField("screens.Team", related_name="schedules")
+
+    def clean(self):
+        super().clean()
+        if self.pk and not self.teams.exists():
+            raise ValidationError("Schedule must belong to at least one team.")
 
     def get_playlist(self):
         yesterday = timezone.now() - timedelta(days=1)

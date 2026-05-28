@@ -1,4 +1,5 @@
 from datetime import datetime
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import Q
 from django.urls import reverse
@@ -22,6 +23,12 @@ class Playlist(models.Model):
     parents = models.ManyToManyField("self", related_name="children", symmetrical=False,
                                      through="PlaylistRelation", through_fields=("inheriting_list", "super_list"),
                                      help_text="All sources that would be played by these playlists will be included in this one too.", blank=True)
+    teams = models.ManyToManyField("screens.Team", related_name="playlists")
+
+    def clean(self):
+        super().clean()
+        if self.pk and not self.teams.exists():
+            raise ValidationError("Playlist must belong to at least one team.")
 
     def parent_sources(self, block_list):
         block_list.append(self.id)

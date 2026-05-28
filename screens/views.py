@@ -1,9 +1,11 @@
+from django.contrib.admin.views.decorators import staff_member_required
 from django.db.models import Count
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render, get_object_or_404
 from django.urls import resolve, Resolver404
 from urllib.parse import urlparse
 from screens import models
+from screens.team_scope import scope_to_user_teams
 from screens.utils import get_client_ip, get_client_hostname
 from datetime import datetime
 from advertising.settings import AUTO_MAKE_SCREENS_FOR_NEW_IPS, UNCONFIGURED_SCREEN_MESSAGE
@@ -145,9 +147,44 @@ def render_playlist_json(playlist, screen_interspersed=None, screen_id=None):
     }
 
 
+@staff_member_required
 def view_playlist_tree_json(request):
-    playlists = models.Playlist.objects.prefetch_related("children_list").annotate(
-        source_count=Count("playlistentry")
+    accessible_ids = set(
+        scope_to_user_teams(models.Playlist.objects.all(), request)
+        .values_list("id", flat=True)
+    )
+
+    visible_ids = set(accessible_ids)
+
+    frontier = set(accessible_ids)
+    while frontier:
+        parents = set(
+            models.PlaylistRelation.objects
+                .filter(inheriting_list_id__in=frontier)
+                .values_list("super_list_id", flat=True)
+        ) - visible_ids
+        if not parents:
+            break
+        visible_ids |= parents
+        frontier = parents
+
+    frontier = set(accessible_ids)
+    while frontier:
+        children = set(
+            models.PlaylistRelation.objects
+                .filter(super_list_id__in=frontier)
+                .values_list("inheriting_list_id", flat=True)
+        ) - visible_ids
+        if not children:
+            break
+        visible_ids |= children
+        frontier = children
+
+    playlists = (
+        models.Playlist.objects
+        .filter(id__in=visible_ids)
+        .prefetch_related("children_list")
+        .annotate(source_count=Count("playlistentry"))
     )
     out = {}
     for pl in playlists:
@@ -155,7 +192,10 @@ def view_playlist_tree_json(request):
             "name": pl.name,
             "description": pl.description,
             "source_count": pl.source_count,
-            "children": list(pl.children_list.values_list("inheriting_list_id", flat=True)),
+            "children": [
+                child_id for child_id in pl.children_list.values_list("inheriting_list_id", flat=True)
+                if child_id in visible_ids
+            ],
         }
     return JsonResponse(out)
 

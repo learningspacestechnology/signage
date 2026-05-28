@@ -1,3 +1,4 @@
+from .team import Team, TeamMembership
 from .source import Source
 from .playlist_entry import PlaylistEntry
 from .playlist import Playlist
