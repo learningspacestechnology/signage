@@ -27,12 +27,11 @@ class PlaylistParentsInline(TabularInline):
 
 @admin.register(Playlist)
 class PlaylistDisplay(ModelAdmin):
-    list_display = ('name', 'show_source_count', 'plays_everything', 'last_updated')
+    list_display = ('name', 'show_source_count', 'last_updated')
     search_fields = ('name', 'description')
-    list_filter = ('plays_everything',)
     readonly_fields = ('last_updated',)
     fieldsets = [
-        (None, {'fields': ['name', 'description', 'default_duration', 'plays_everything', 'interspersed_source', 'last_updated']}),
+        (None, {'fields': ['name', 'description', 'default_duration', 'interspersed_source', 'last_updated']}),
     ]
     inlines = [PlaylistParentsInline, PlaylistEntryInline]
 

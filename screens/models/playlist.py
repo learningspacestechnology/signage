@@ -3,7 +3,7 @@ from django.db import models
 from django.db.models import Q
 from django.urls import reverse
 
-from screens.models import Source, PlaylistEntry
+from screens.models import Source
 
 
 def flatten(t):
@@ -13,7 +13,6 @@ def flatten(t):
 class Playlist(models.Model):
     name = models.TextField()
     description = models.TextField(blank=True)
-    plays_everything = models.BooleanField(default=False)
     interspersed_source = models.ForeignKey(Source, null=True, default=None, on_delete=models.SET_NULL, blank=True)
     last_updated = models.DateTimeField(auto_now=True)
     default_duration = models.PositiveIntegerField(
@@ -28,23 +27,15 @@ class Playlist(models.Model):
         block_list.append(self.id)
         return flatten(map(lambda x: x.get_sources(block_list), self.parents.exclude(id__in=block_list)))
 
-    def get_sources(self, block_list = None):
+    def get_sources(self, block_list=None):
         if block_list is None:
             block_list = []
-
         now = datetime.now()
-        if self.plays_everything:
-            valid_sources = Source.objects\
-                .exclude(pk=self.interspersed_source_id)\
-                .filter(Q(valid_from__lte=now) | Q(valid_from__isnull=True))\
-                .filter(Q(expires_at__gte=now) | Q(expires_at__isnull=True))
-            return [PlaylistEntry(source=s) for s in valid_sources] + self.parent_sources(block_list)
-        else:
-            return list(self.playlistentry_set.select_related("source") \
-                        .exclude(source_id=self.interspersed_source_id) \
-                        .filter(Q(source__valid_from__lte=now) | Q(source__valid_from__isnull=True)) \
-                        .filter(Q(source__expires_at__gte=now) | Q(source__expires_at__isnull=True)) \
-                        .order_by('number')) + self.parent_sources(block_list)
+        return list(self.playlistentry_set.select_related("source")
+                    .exclude(source_id=self.interspersed_source_id)
+                    .filter(Q(source__valid_from__lte=now) | Q(source__valid_from__isnull=True))
+                    .filter(Q(source__expires_at__gte=now) | Q(source__expires_at__isnull=True))
+                    .order_by('number')) + self.parent_sources(block_list)
 
     def get_resolved_sources(self, block_list=None):
         entries = self.get_sources(block_list)

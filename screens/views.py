@@ -155,7 +155,6 @@ def view_playlist_tree_json(request):
             "name": pl.name,
             "description": pl.description,
             "source_count": pl.source_count,
-            "plays_everything": pl.plays_everything,
             "children": list(pl.children_list.values_list("inheriting_list_id", flat=True)),
         }
     return JsonResponse(out)
