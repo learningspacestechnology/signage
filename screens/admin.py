@@ -34,6 +34,16 @@ class TeamScopedAdminMixin:
             excluded.append('teams')
         return excluded
 
+    def get_fieldsets(self, request, obj=None):
+        fieldsets = super().get_fieldsets(request, obj)
+        if request.user.is_superuser:
+            return fieldsets
+        cleaned = []
+        for name, opts in fieldsets:
+            fields = [f for f in opts.get('fields', []) if f != 'teams']
+            cleaned.append((name, {**opts, 'fields': fields}))
+        return cleaned
+
     def formfield_for_manytomany(self, db_field, request, **kwargs):
         if db_field.name == 'teams':
             if request.user.is_superuser:

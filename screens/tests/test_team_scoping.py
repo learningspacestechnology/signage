@@ -216,6 +216,20 @@ class TeamScopingTests(TestCase):
         resp = c.get(f'/admin/screens/team/{empty.pk}/delete/')
         self.assertIn(resp.status_code, (302, 403, 404))
 
+    # --- Add/change page render for non-superusers ---------------------------
+
+    def test_non_superuser_can_open_playlist_and_schedule_add_pages(self):
+        c = Client()
+        c.force_login(self.user_a)
+        self.assertEqual(c.get('/admin/screens/playlist/add/').status_code, 200)
+        self.assertEqual(c.get('/admin/screens/schedule/add/').status_code, 200)
+
+    def test_non_superuser_can_open_playlist_change_page(self):
+        c = Client()
+        c.force_login(self.user_a)
+        resp = c.get(f'/admin/screens/playlist/{self.list_a.pk}/change/')
+        self.assertEqual(resp.status_code, 200)
+
     # --- Team picker render --------------------------------------------------
 
     def test_team_picker_button_renders_around_badge(self):
