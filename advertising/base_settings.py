@@ -90,7 +90,6 @@ UNFOLD = {
     "SITE_TITLE": "Display Screen Admin",
     "SITE_HEADER": "Display Screen Admin",
     "DASHBOARD_CALLBACK": "advertising.admin.dashboard_callback",
-    "SITE_DROPDOWN": "advertising.admin.team_switcher_dropdown",
     "ENVIRONMENT": "advertising.admin.active_team_environment",
     "SITE_URL": "/",
     "SHOW_HISTORY": True,

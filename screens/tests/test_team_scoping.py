@@ -216,6 +216,28 @@ class TeamScopingTests(TestCase):
         resp = c.get(f'/admin/screens/team/{empty.pk}/delete/')
         self.assertIn(resp.status_code, (302, 403, 404))
 
+    # --- Team picker render --------------------------------------------------
+
+    def test_team_picker_button_renders_around_badge(self):
+        c = Client()
+        c.force_login(self.user_ab)
+        resp = c.get('/admin/')
+        self.assertEqual(resp.status_code, 200)
+        body = resp.content.decode()
+        self.assertIn('openTeamPicker', body)
+        self.assertIn(self.team_a.name, body)
+        self.assertIn(f'/admin/set-active-team/{self.team_a.pk}/', body)
+        self.assertIn(f'/admin/set-active-team/{self.team_b.pk}/', body)
+
+    def test_team_picker_includes_all_teams_for_superuser(self):
+        c = Client()
+        c.force_login(self.super)
+        resp = c.get('/admin/')
+        self.assertEqual(resp.status_code, 200)
+        body = resp.content.decode()
+        self.assertIn('openTeamPicker', body)
+        self.assertIn('/admin/set-active-team/all/', body)
+
     # --- Playlist tree endpoint scoping -------------------------------------
 
     def _fetch_tree(self, user):
