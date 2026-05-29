@@ -132,7 +132,7 @@ class PlaylistDisplay(TeamScopedAdminMixin, ModelAdmin):
     ]
     inlines = [PlaylistParentsInline, PlaylistEntryInline]
 
-    @display(description="Sources")
+    @display(description="Content")
     def show_source_count(self, obj):
         return obj.playlistentry_set.count()
 
@@ -197,10 +197,15 @@ class PlaylistListFilter(admin.SimpleListFilter):
 @admin.register(Source)
 class SourceDisplay(TeamScopedAdminMixin, ModelAdmin):
     readonly_fields = ('image_preview',)
-    list_display = ('name', 'show_type', 'resolution', 'created_by', 'playlist_names', 'show_teams', 'created_at', 'valid_from', 'expires_at')
+    list_display = ('thumbnail', 'name', 'show_type', 'resolution', 'created_by', 'playlist_names', 'show_teams', 'created_at', 'valid_from', 'expires_at')
     list_filter = (PlaylistListFilter, 'type')
     search_fields = ('name',)
     date_hierarchy = 'created_at'
+
+    @display(description="Preview")
+    def thumbnail(self, obj):
+        from django.template.loader import get_template
+        return get_template("screens/source_thumbnail.html").render({"source": obj})
 
     @display(description="Type", label={
         "Image": "success",

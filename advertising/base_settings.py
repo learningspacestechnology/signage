@@ -103,15 +103,27 @@ UNFOLD = {
                 "separator": False,
                 "items": [
                     {
-                        "title": "Screens",
-                        "icon": "monitor",
-                        "link": reverse_lazy("admin:screens_screen_changelist"),
-                        "permission": lambda request: request.user.has_perm("screens.view_screen"),
+                        "title": "Bulk Upload Content",
+                        "icon": "upload_file",
+                        "link": reverse_lazy("admin:screens_source_bulk_create"),
+                        "permission": lambda request: request.user.has_perm("screens.add_source"),
+                    },
+                    {
+                        "title": "Content",
+                        "icon": "perm_media",
+                        "link": reverse_lazy("admin:screens_source_changelist"),
+                        "permission": lambda request: request.user.has_perm("screens.view_source"),
                     },
                     {
                         "title": "Playlists",
                         "icon": "queue_play_next",
                         "link": reverse_lazy("admin:screens_playlist_changelist"),
+                        "permission": lambda request: request.user.has_perm("screens.view_playlist"),
+                    },
+                    {
+                        "title": "Playlist Tree",
+                        "icon": "account_tree",
+                        "link": reverse_lazy("admin:screens_playlist_tree"),
                         "permission": lambda request: request.user.has_perm("screens.view_playlist"),
                     },
                     {
@@ -121,22 +133,10 @@ UNFOLD = {
                         "permission": lambda request: request.user.has_perm("screens.view_schedule"),
                     },
                     {
-                        "title": "Playlist Tree",
-                        "icon": "account_tree",
-                        "link": reverse_lazy("admin:screens_playlist_tree"),
-                        "permission": lambda request: request.user.has_perm("screens.view_playlist"),
-                    },
-                    {
-                        "title": "Sources",
-                        "icon": "perm_media",
-                        "link": reverse_lazy("admin:screens_source_changelist"),
-                        "permission": lambda request: request.user.has_perm("screens.view_source"),
-                    },
-                    {
-                        "title": "Bulk Upload Sources",
-                        "icon": "upload_file",
-                        "link": reverse_lazy("admin:screens_source_bulk_create"),
-                        "permission": lambda request: request.user.has_perm("screens.add_source"),
+                        "title": "Screens",
+                        "icon": "monitor",
+                        "link": reverse_lazy("admin:screens_screen_changelist"),
+                        "permission": lambda request: request.user.has_perm("screens.view_screen"),
                     },
                 ],
             },

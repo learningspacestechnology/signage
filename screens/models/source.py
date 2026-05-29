@@ -45,10 +45,13 @@ class Source(models.Model):
     height = models.PositiveIntegerField(null=True, blank=True, editable=False)
     playlists = models.ManyToManyField("Playlist", related_name="sources", symmetrical=False,
                                        through="PlaylistEntry", through_fields=("source", "playlist"),
-                                       help_text="All sources that would be played by these playlists will be included in this one too.",
+                                       help_text="All content that would be played by these playlists will be included in this one too.",
                                        blank=True)
     teams = models.ManyToManyField("screens.Team", related_name="sources")
 
+    class Meta:
+        verbose_name = "content"
+        verbose_name_plural = "content"
 
     def __str__(self):
         return self.name

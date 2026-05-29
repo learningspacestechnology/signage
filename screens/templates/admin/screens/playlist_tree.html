@@ -107,7 +107,7 @@
 </style>
 
 <h1 class="text-2xl font-semibold mb-4">{% trans "Playlist Inheritance" %}</h1>
-<p class="text-sm text-gray-500 mb-4">{% trans "Arrows show inheritance: sources from a parent playlist flow into its children. Drag nodes to rearrange. Scroll to zoom. Click a node to edit." %}</p>
+<p class="text-sm text-gray-500 mb-4">{% trans "Arrows show inheritance: content from a parent playlist flows into its children. Drag nodes to rearrange. Scroll to zoom. Click a node to edit." %}</p>
 
 <div id="playlist-graph-container">
   <svg id="playlist-graph-svg"></svg>
@@ -281,7 +281,7 @@
         })
         .on("mouseenter", (event, d) => {
           ttName.textContent = d.name;
-          ttSources.textContent = d.source_count + " source(s)";
+          ttSources.textContent = d.source_count + " item(s)";
           ttDesc.textContent = d.description || "";
           tooltip.style.display = "block";
         })
