@@ -180,7 +180,7 @@ UNFOLD = {
                 ],
             },
             {
-                "title": "Users & Groups",
+                "title": "Users, Groups & Teams",
                 "separator": True,
                 "collapsible": True,
                 "items": [
@@ -193,6 +193,12 @@ UNFOLD = {
                         "title": "Groups",
                         "icon": "group",
                         "link": reverse_lazy("admin:auth_group_changelist"),
+                    },
+                    {
+                        "title": "Teams",
+                        "icon": "groups",
+                        "link": reverse_lazy("admin:screens_team_changelist"),
+                        "permission": lambda request: request.user.is_superuser,
                     },
                 ],
             },
