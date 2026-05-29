@@ -1,14 +1,30 @@
 from django.contrib.admin.views.decorators import staff_member_required
 from django.db.models import Count
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.shortcuts import render, get_object_or_404
-from django.urls import resolve, Resolver404
+from django.urls import resolve, reverse, Resolver404
 from urllib.parse import urlparse
 from screens import models
 from screens.team_scope import scope_to_user_teams
 from screens.utils import get_client_ip, get_client_hostname
 from datetime import datetime
 from advertising.settings import AUTO_MAKE_SCREENS_FOR_NEW_IPS, UNCONFIGURED_SCREEN_MESSAGE
+
+
+_TICKER_SENTINEL_PLAYLIST_ID = -1
+_TICKER_SENTINEL_LAST_UPDATED = "1970-01-01T00:00:00"
+
+
+def _ticker_redirect_payload(screen):
+    """Single-iframe playlist that points the outer Vue at the wrapper template."""
+    wrapper_url = reverse("screens/screen_wrapper", args=[screen.id])
+    return {
+        "playlist": [{"src": wrapper_url, "type": models.Source.IFRAME, "duration": 86400}],
+        "interspersed": [],
+        "current_playlist": _TICKER_SENTINEL_PLAYLIST_ID,
+        "playlist_last_updated": _TICKER_SENTINEL_LAST_UPDATED,
+        "screen_id": screen.id,
+    }
 
 
 def get_screen(request):
@@ -113,13 +129,33 @@ def view_screen_automatic_json(request):
 def view_screen_json(request, screen_id):
     try:
         screen = models.Screen.objects.get(id=screen_id)
-        if screen.schedule:
-            current_playlist = screen.schedule.get_playlist()
-            return JsonResponse(render_playlist_json(current_playlist, screen_interspersed=screen.interspersed_source, screen_id=screen_id))
-        else:
-            return _unconfigured_json(request)
     except models.Screen.DoesNotExist:
         return JsonResponse({"error": "screen doesnt exist"}, status=404)
+    if not screen.schedule:
+        return _unconfigured_json(request)
+    if screen.has_ticker():
+        return JsonResponse(_ticker_redirect_payload(screen))
+    current_playlist = screen.schedule.get_playlist()
+    return JsonResponse(render_playlist_json(
+        current_playlist,
+        screen_interspersed=screen.interspersed_source,
+        screen_id=screen_id,
+    ))
+
+
+def view_screen_wrapper(request, screen_id):
+    screen = get_object_or_404(models.Screen, id=screen_id)
+    if not screen.has_ticker():
+        # Ticker was disabled between page load and now; bounce to plain screen URL.
+        return HttpResponseRedirect(reverse("screens/screen_view", args=[screen_id]))
+    if not screen.schedule:
+        return HttpResponse("No playlist set for this screen")
+    current_playlist = screen.schedule.get_playlist()
+    return render(request, "screens/screen_with_ticker.html", {
+        "screen": screen,
+        "style": screen.resolved_ticker_style(),
+        "current_playlist_id": current_playlist.pk,
+    })
 
 
 def view_playlist_json(request, playlist_id):
@@ -207,9 +243,24 @@ def _get_meta(request, screen):
     playlist = screen.schedule.get_playlist()
     screen.last_seen = datetime.now()
     screen.save()
-    out = {"current_playlist": playlist.pk,
-           "playlist_last_updated": playlist.last_updated.isoformat()}
-    return JsonResponse(out)
+
+    if screen.has_ticker():
+        # Match the sentinel returned by /api/screen so outer Vue's diff stays quiet
+        # while the wrapper is in charge. Real text/playlist live in extra fields.
+        return JsonResponse({
+            "current_playlist": _TICKER_SENTINEL_PLAYLIST_ID,
+            "playlist_last_updated": _TICKER_SENTINEL_LAST_UPDATED,
+            "ticker_enabled": True,
+            "ticker_text": screen.ticker_text,
+            "ticker_current_playlist": playlist.pk,
+        })
+
+    return JsonResponse({
+        "current_playlist": playlist.pk,
+        "playlist_last_updated": playlist.last_updated.isoformat(),
+        "ticker_enabled": False,
+        "ticker_text": "",
+    })
 
 
 def get_meta(request):

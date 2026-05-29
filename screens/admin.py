@@ -256,6 +256,15 @@ class SourceDisplay(TeamScopedAdminMixin, ModelAdmin):
         )
 
 
+TICKER_GATE_FIELDS = ('ticker_enabled', 'ticker_layout')
+TICKER_TEXT_FIELDS = (
+    'ticker_text', 'ticker_style_preset',
+    'ticker_font_size_px', 'ticker_font_color',
+    'ticker_background_color', 'ticker_background_opacity',
+    'ticker_scroll_speed_px_sec',
+)
+
+
 @admin.register(Screen)
 class ScreenAdmin(TeamScopedAdminMixin, ModelAdmin):
     readonly_fields = ('screen_preview',)
@@ -263,6 +272,44 @@ class ScreenAdmin(TeamScopedAdminMixin, ModelAdmin):
     search_fields = ('name', 'ip')
     list_filter = ('schedule',)
     list_select_related = ('schedule',)
+    fieldsets = (
+        (None, {
+            'fields': ('name', 'schedule', 'interspersed_source', 'ip',
+                       'teams', 'screen_preview'),
+        }),
+        ('Ticker tape', {
+            'classes': ('collapse',),
+            'fields': TICKER_GATE_FIELDS + TICKER_TEXT_FIELDS,
+        }),
+    )
+
+    def _hidden_ticker_fields(self, request):
+        hidden = set()
+        if not request.user.is_superuser:
+            hidden.update(TICKER_GATE_FIELDS)
+            if not request.user.has_perm('screens.change_ticker_text'):
+                hidden.update(TICKER_TEXT_FIELDS)
+        return hidden
+
+    def get_exclude(self, request, obj=None):
+        excluded = list(super().get_exclude(request, obj) or [])
+        for field in self._hidden_ticker_fields(request):
+            if field not in excluded:
+                excluded.append(field)
+        return excluded
+
+    def get_fieldsets(self, request, obj=None):
+        fieldsets = super().get_fieldsets(request, obj)
+        hidden = self._hidden_ticker_fields(request)
+        if not hidden:
+            return fieldsets
+        cleaned = []
+        for name, opts in fieldsets:
+            fields = [f for f in opts.get('fields', []) if f not in hidden]
+            if not fields:
+                continue
+            cleaned.append((name, {**opts, 'fields': fields}))
+        return cleaned
 
     @display(description="Online", boolean=True)
     def show_online(self, obj):

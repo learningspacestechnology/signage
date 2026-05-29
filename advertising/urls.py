@@ -28,6 +28,7 @@ urlpatterns = [
     path('', RedirectView.as_view(url='/admin/')),
     path('screen/', screenviews.view_screen_automatic),
     path('screen/<int:screen_id>', screenviews.view_screen, name="screens/screen_view"),
+    path('screen_wrapper/<int:screen_id>', screenviews.view_screen_wrapper, name="screens/screen_wrapper"),
     path('playlist/<int:playlist_id>', screenviews.view_playlist, name="screens/playlist_view"),
     path('api/screen/', screenviews.view_screen_automatic_json),
     path('api/screen/<int:screen_id>', screenviews.view_screen_json, name="screens/screen_view_json"),
