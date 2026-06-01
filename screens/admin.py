@@ -164,6 +164,12 @@ class ScheduleRuleInline(StackedInline):
             kwargs['queryset'] = scope_to_active_team(Playlist.objects.all(), request)
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
+    class Media:
+        # django-recurrence's init script observes #container for new inline rows,
+        # but Unfold doesn't render that element. Re-init on Django's formset:added.
+        js = ('screens/js/recurrence_unfold_init.js',)
+        css = {'all': ('screens/css/recurrence_unfold.css',)}
+
 
 @admin.register(Schedule)
 class ScheduleDisplay(TeamScopedAdminMixin, ModelAdmin):
