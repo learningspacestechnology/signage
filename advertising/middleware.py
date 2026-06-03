@@ -30,6 +30,7 @@ _ACTIVE_TEAM_BYPASS_PREFIXES = (
     '/admin/logout/',
     '/admin/password_change/',
     '/admin/set-active-team/',
+    '/admin/oauth/',  # Entra ID login + callback run before the user is staff
 )
 
 # Endpoints whose views handle unregistered IPs themselves — either by

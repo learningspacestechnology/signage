@@ -20,10 +20,15 @@ import advertising.admin  # noqa: F401 — registers celery admin with unfold st
 from django.views.generic import RedirectView
 
 from advertising import settings
+from advertising import entra_views
 from advertising.views import serve_media
 from screens import views as screenviews
 
 urlpatterns = [
+    # Entra ID sign-in routes — under /admin/ so IpAccessControlMiddleware
+    # allows them; declared before admin.site.urls to take precedence.
+    path('admin/oauth/entra/login/', entra_views.entra_login, name='entra_login'),
+    path('admin/oauth/entra/callback/', entra_views.entra_callback, name='entra_callback'),
     path('admin/', admin.site.urls),
     path('', RedirectView.as_view(url='/admin/')),
     path('screen/', screenviews.view_screen_automatic),
