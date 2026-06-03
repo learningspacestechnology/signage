@@ -14,7 +14,8 @@ def flatten(t):
 class Playlist(models.Model):
     name = models.TextField()
     description = models.TextField(blank=True)
-    interspersed_source = models.ForeignKey(Source, null=True, default=None, on_delete=models.SET_NULL, blank=True)
+    interspersed_source = models.ForeignKey(Source, null=True, default=None, on_delete=models.SET_NULL, blank=True,
+                                            verbose_name="Interspersed Content")
     last_updated = models.DateTimeField(auto_now=True)
     default_duration = models.PositiveIntegerField(
         default=10,

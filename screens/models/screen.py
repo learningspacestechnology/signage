@@ -45,6 +45,7 @@ class Screen(models.Model):
                                             default=None,
                                             on_delete=models.SET_NULL,
                                             blank=True,
+                                            verbose_name="Interspersed Content",
                                             help_text="Optional (you probably want an event schedule here)")
     ip = models.GenericIPAddressField()
     last_seen = models.DateTimeField(auto_now_add=True, blank=True)
