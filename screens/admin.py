@@ -1,5 +1,6 @@
 from admin_ordering.admin import OrderableAdmin
 from django import forms
+from django.conf import settings
 from django.urls import re_path
 from django.contrib import admin
 from django.core.exceptions import ValidationError
@@ -401,4 +402,4 @@ class TeamAdmin(ModelAdmin):
             self.delete_model(request, obj)
 
 
-admin.site.site_header = "Display Screen Admin"
+admin.site.site_header = settings.ADMIN_SITE_NAME

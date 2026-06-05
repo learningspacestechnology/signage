@@ -86,9 +86,11 @@ CELERY_BEAT_SCHEDULE = {
     },
 }
 
+ADMIN_SITE_NAME = "Display Screen Admin"
+
 UNFOLD = {
-    "SITE_TITLE": "Display Screen Admin",
-    "SITE_HEADER": "Display Screen Admin",
+    "SITE_TITLE": ADMIN_SITE_NAME,
+    "SITE_HEADER": ADMIN_SITE_NAME,
     "DASHBOARD_CALLBACK": "advertising.admin.dashboard_callback",
     "ENVIRONMENT": "advertising.admin.active_team_environment",
     "SITE_URL": "/",
