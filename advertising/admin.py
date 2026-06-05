@@ -1,11 +1,16 @@
+import json
+from datetime import timedelta
+
 from django.conf import settings
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.admin import GroupAdmin as BaseGroupAdmin
 from django.contrib.auth.decorators import user_passes_test
 from django.contrib.auth.models import User, Group
+from django.db.models import Count
 from django.http import HttpResponseBadRequest, HttpResponseRedirect
-from django.urls import path
+from django.urls import path, reverse
+from django.utils import timezone
 from unfold.admin import ModelAdmin
 from unfold.forms import AdminPasswordChangeForm, UserChangeForm, UserCreationForm
 from unfold.widgets import UnfoldAdminSelectWidget, UnfoldAdminTextInputWidget
@@ -123,11 +128,94 @@ from django_celery_beat.admin import PeriodicTaskForm, TaskSelectWidget
 from django_celery_results.admin import TaskResultAdmin
 from django_celery_results.models import TaskResult
 
-def dashboard_callback(_request, context):
-    context["app_list"] = [
-        app for app in context.get("app_list", [])
-        if app["app_label"] in ("screens")
+def _doughnut_data(labels, data, colors):
+    """JSON payload for Unfold's bundled chart.js (`data-value` on a `.chart`
+    canvas). Template autoescaping turns the quotes into entities the browser
+    decodes back — same as Unfold's own chart components."""
+    return json.dumps({
+        "labels": labels,
+        "datasets": [{"data": data, "backgroundColor": colors, "borderWidth": 0}],
+    })
+
+
+def dashboard_callback(request, context):
+    """Populate the admin index with a team-scoped dashboard.
+
+    Every count respects the active team via ``scope_to_active_team`` — the same
+    helper the changelists use — so users only ever see their own team's totals
+    (superusers in ALL_TEAMS mode see global totals)."""
+    from screens.models import Playlist, Schedule, Screen, Source
+    from screens.team_scope import scope_to_active_team
+
+    screens_qs = scope_to_active_team(Screen.objects.all(), request)
+    playlists_qs = scope_to_active_team(Playlist.objects.all(), request)
+    schedules_qs = scope_to_active_team(Schedule.objects.all(), request)
+    sources_qs = scope_to_active_team(Source.objects.all(), request)
+
+    # "Online" mirrors Screen.online(): last_seen within the last minute.
+    online_cutoff = timezone.now() - timedelta(minutes=1)
+    screens_total = screens_qs.count()
+    screens_online = screens_qs.filter(last_seen__gte=online_cutoff).count()
+    screens_offline = screens_total - screens_online
+
+    # Content broken down by type (Image / Video / Website).
+    type_colors = {
+        Source.IMAGE: "#0ea5e9",   # sky
+        Source.VIDEO: "#8b5cf6",   # violet
+        Source.IFRAME: "#f59e0b",  # amber
+    }
+    by_type = {row["type"]: row["n"]
+               for row in sources_qs.values("type").annotate(n=Count("id"))}
+    content_by_type = [
+        {"label": label, "count": by_type.get(key, 0), "color": type_colors[key]}
+        for key, label in Source.types
     ]
+
+    # last_seen has auto_now_add, so it is never null; "< cutoff" == not online.
+    offline_screens = [
+        {
+            "name": s.name or f"Screen #{s.pk}",
+            "last_seen": s.last_seen,
+            "url": reverse("admin:screens_screen_change", args=[s.pk]),
+        }
+        for s in screens_qs.filter(last_seen__lt=online_cutoff).order_by("last_seen")[:5]
+    ]
+
+    context.update({
+        "title": "Overview Dashboard",  # replaces the default "Site administration"
+        "app_list": [],  # dashboard-only layout — no default model list
+
+        "screens_total": screens_total,
+        "screens_online": screens_online,
+        "screens_offline": screens_offline,
+        "screens_url": reverse("admin:screens_screen_changelist"),
+        "screens_chart_data": _doughnut_data(
+            ["Online", "Offline"], [screens_online, screens_offline],
+            ["#22c55e", "#ef4444"],
+        ),
+
+        "playlists_count": playlists_qs.count(),
+        "playlists_url": reverse("admin:screens_playlist_changelist"),
+        "schedules_count": schedules_qs.count(),
+        "schedules_url": reverse("admin:screens_schedule_changelist"),
+        "content_count": sources_qs.count(),
+        "content_url": reverse("admin:screens_source_changelist"),
+
+        "content_by_type": content_by_type,
+        "content_type_chart_data": _doughnut_data(
+            [c["label"] for c in content_by_type],
+            [c["count"] for c in content_by_type],
+            [c["color"] for c in content_by_type],
+        ),
+
+        "offline_screens": offline_screens,
+
+        "can_add_source": request.user.has_perm("screens.add_source"),
+        "can_add_playlist": request.user.has_perm("screens.add_playlist"),
+        "bulk_upload_url": reverse("admin:screens_source_bulk_create"),
+        "add_content_url": reverse("admin:screens_source_add"),
+        "add_playlist_url": reverse("admin:screens_playlist_add"),
+    })
     return context
 
 

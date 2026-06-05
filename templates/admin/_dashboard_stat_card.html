@@ -1,0 +1,14 @@
+{% load i18n %}
+<a href="{{ href }}"
+   class="bg-white flex flex-col grow overflow-hidden p-6 relative rounded-default shadow-xs border border-base-200 cursor-pointer transition-all hover:border-base-300 hover:shadow-md dark:bg-base-900 dark:border-base-800 dark:hover:border-base-700">
+    <div class="flex items-center justify-between mb-3">
+        <span class="text-base-500 text-sm font-medium uppercase tracking-wide">{{ label }}</span>
+        <span class="material-symbols-outlined text-base-300 dark:text-base-500">{{ icon }}</span>
+    </div>
+    <div class="text-3xl font-semibold text-important">{{ value }}</div>
+    {% if subtext %}
+        <div class="text-base-500 text-sm mt-1">
+            <span class="text-important font-medium">{{ subvalue }}</span> {{ subtext }}
+        </div>
+    {% endif %}
+</a>
