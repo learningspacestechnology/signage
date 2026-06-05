@@ -49,9 +49,10 @@ INSTALLED_APPS = [
     'django_cleanup.apps.CleanupConfig',  # TODO will need to detect image load failure and reload page if it occurs
 ]
 
-# Celery settings
-CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://redis:6379/0')
-CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', 'redis://redis:6379/0')
+# Celery settings — defaults; overridden from the environment in the
+# deploy settings module (signage_deploy/docker/advertising/settings.py).
+CELERY_BROKER_URL = 'redis://redis:6379/0'
+CELERY_RESULT_BACKEND = 'redis://redis:6379/0'
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
@@ -326,31 +327,27 @@ IP_ACCESS_CONTROL_ENABLED = True
 
 # --- Microsoft Entra ID interactive sign-in ---
 # Uses the already-installed `msal` library and a DEDICATED Entra app
-# registration (separate from the O365_* calendar app). Reads from the
-# environment, matching the os.environ.get convention used above.
-ENTRA_AUTH_ENABLED = os.environ.get('ENTRA_AUTH_ENABLED', 'True') == 'True'
-ENTRA_CLIENT_ID = os.environ.get('ENTRA_CLIENT_ID', '')
-ENTRA_TENANT_ID = os.environ.get('ENTRA_TENANT_ID', '')
-ENTRA_CLIENT_SECRET = os.environ.get('ENTRA_CLIENT_SECRET', '')
-ENTRA_AUTHORITY = os.environ.get(
-    'ENTRA_AUTHORITY',
-    f'https://login.microsoftonline.com/{ENTRA_TENANT_ID}' if ENTRA_TENANT_ID else '',
-)
+# registration (separate from the O365_* calendar app). These are defaults;
+# the deploy settings module (signage_deploy/docker/advertising/settings.py)
+# overrides them from the environment.
+ENTRA_AUTH_ENABLED = True
+ENTRA_CLIENT_ID = ''
+ENTRA_TENANT_ID = ''
+ENTRA_CLIENT_SECRET = ''
+# Defaults to https://login.microsoftonline.com/<tenant> when a tenant is set
+# (computed in the deploy settings module).
+ENTRA_AUTHORITY = ''
 # Absolute https URI registered in Azure; must match exactly.
-ENTRA_REDIRECT_URI = os.environ.get('ENTRA_REDIRECT_URI', '')
+ENTRA_REDIRECT_URI = ''
 
 # Auto-provisioning policy — safe by default: created users get NO access
 # (is_staff=False, no Team) until an existing admin promotes them.
-ENTRA_AUTO_CREATE_USERS = os.environ.get('ENTRA_AUTO_CREATE_USERS', 'True') == 'True'
-ENTRA_AUTO_GRANT_IS_STAFF = os.environ.get('ENTRA_AUTO_GRANT_IS_STAFF', 'False') == 'True'
-ENTRA_DEFAULT_TEAM_NAME = os.environ.get('ENTRA_DEFAULT_TEAM_NAME', '')  # '' = none
-# Optional allow-list of UPN domains permitted to sign in (comma-separated).
+ENTRA_AUTO_CREATE_USERS = True
+ENTRA_AUTO_GRANT_IS_STAFF = False
+ENTRA_DEFAULT_TEAM_NAME = ''  # '' = none
+# Optional allow-list of UPN domains permitted to sign in.
 # Empty list = allow any account in the tenant.
-ENTRA_ALLOWED_DOMAINS = [
-    d.strip().lower()
-    for d in os.environ.get('ENTRA_ALLOWED_DOMAINS', '').split(',')
-    if d.strip()
-]
+ENTRA_ALLOWED_DOMAINS = []
 
 # ModelBackend first so password logins (e.g. the superuser fallback)
 # short-circuit before the Entra backend, which only acts when given `claims`.
