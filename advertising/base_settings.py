@@ -90,8 +90,11 @@ CELERY_BEAT_SCHEDULE = {
 ADMIN_SITE_NAME = "Display Screen Admin"
 
 UNFOLD = {
-    "SITE_TITLE": ADMIN_SITE_NAME,
-    "SITE_HEADER": ADMIN_SITE_NAME,
+    # Callables so the name is resolved from settings.ADMIN_SITE_NAME at render
+    # time — any layer that overrides ADMIN_SITE_NAME takes effect without
+    # rebuilding this dict. See advertising.admin.site_name.
+    "SITE_TITLE": "advertising.admin.site_name",
+    "SITE_HEADER": "advertising.admin.site_name",
     "DASHBOARD_CALLBACK": "advertising.admin.dashboard_callback",
     "ENVIRONMENT": "advertising.admin.active_team_environment",
     "SITE_URL": "/",

@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.admin import GroupAdmin as BaseGroupAdmin
@@ -100,6 +101,13 @@ def active_team_environment(request):
     if active is ALL_TEAMS:
         return ["All teams", "danger"]
     return [f"Team: {active.name}", "info"]
+
+
+def site_name(_request):
+    """Unfold SITE_TITLE/SITE_HEADER callable: resolved at render time so any
+    settings layer overriding ADMIN_SITE_NAME (dev settings.py, deploy
+    settings.py) flows through without rebuilding the UNFOLD dict."""
+    return settings.ADMIN_SITE_NAME
 
 from django_celery_beat.models import (
     ClockedSchedule,
