@@ -15,7 +15,10 @@ class Playlist(models.Model):
     name = models.TextField()
     description = models.TextField(blank=True)
     interspersed_source = models.ForeignKey(Source, null=True, default=None, on_delete=models.SET_NULL, blank=True,
-                                            verbose_name="Interspersed Content")
+                                            verbose_name="Interspersed Content",
+                                            help_text="A single piece of content shown between each regular entry "
+                                                      "(e.g. a logo or ad between every slide). It is not part of the "
+                                                      "normal rotation. Leave blank for none.")
     last_updated = models.DateTimeField(auto_now=True)
     default_duration = models.PositiveIntegerField(
         default=10,
@@ -23,7 +26,8 @@ class Playlist(models.Model):
     )
     parents = models.ManyToManyField("self", related_name="children", symmetrical=False,
                                      through="PlaylistRelation", through_fields=("inheriting_list", "super_list"),
-                                     help_text="All sources that would be played by these playlists will be included in this one too.", blank=True)
+                                     help_text="Content from these parent playlists is added to this one. "
+                                               "This playlist's own entries play first, then inherited content follows.", blank=True)
     teams = models.ManyToManyField("screens.Team", related_name="playlists")
 
     def clean(self):

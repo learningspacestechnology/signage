@@ -73,6 +73,7 @@ class TeamScopedAdminMixin:
 class PlaylistEntryInline(OrderableAdmin, TabularInline):
     model = PlaylistEntry
     ordering_field = 'number'
+    verbose_name_plural = "Content (plays in number order, lowest first)"
     extra = 0
     fields = ('number', 'thumbnail', 'source', 'duration')
     readonly_fields = ('thumbnail',)
@@ -157,7 +158,15 @@ class PlaylistDisplay(TeamScopedAdminMixin, ModelAdmin):
 class ScheduleRuleInline(StackedInline):
     model = ScheduleRule
     extra = 0
-    fields = ('playlist', 'starts', 'occurrences', 'start_time', 'end_time', 'priority')
+    fieldsets = (
+        (None, {
+            'description': (
+                "Each rule points a time window at a playlist. When two rules overlap, the one with the "
+                "LOWEST priority number wins. If no rule matches right now, the schedule's default playlist is shown."
+            ),
+            'fields': ('playlist', 'starts', 'occurrences', 'start_time', 'end_time', 'priority'),
+        }),
+    )
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == 'playlist':

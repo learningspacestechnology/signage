@@ -39,7 +39,8 @@ TICKER_PRESET_VALUES = {
 
 class Screen(models.Model):
     name = models.TextField()
-    schedule = models.ForeignKey(Schedule, on_delete=models.PROTECT, null=True)
+    schedule = models.ForeignKey(Schedule, on_delete=models.PROTECT, null=True,
+                                 help_text="The schedule that decides which playlist this screen shows at any given date and time.")
     interspersed_source = models.ForeignKey(Source,
                                             null=True,
                                             default=None,
@@ -47,17 +48,22 @@ class Screen(models.Model):
                                             blank=True,
                                             verbose_name="Interspersed Content",
                                             help_text="Optional (you probably want an event schedule here)")
-    ip = models.GenericIPAddressField()
+    ip = models.GenericIPAddressField(
+        help_text="The device's network address (IPv4 or IPv6). The system uses it to recognise this physical screen.")
     last_seen = models.DateTimeField(auto_now_add=True, blank=True)
     teams = models.ManyToManyField("screens.Team", related_name="screens")
 
     # Superuser-only ticker gates
     ticker_enabled = models.BooleanField(default=False)
-    ticker_layout = models.CharField(max_length=10, choices=TICKER_LAYOUT_CHOICES, default=TICKER_LAYOUT_OVERLAY)
+    ticker_layout = models.CharField(max_length=10, choices=TICKER_LAYOUT_CHOICES, default=TICKER_LAYOUT_OVERLAY,
+                                     help_text="Overlay draws the ticker on top of the content. "
+                                               "Shrink scales the content down to make room for the ticker below it.")
 
     # Editable by anyone with the change_ticker_text permission
     ticker_text = models.TextField(blank=True, default="")
-    ticker_style_preset = models.CharField(max_length=10, choices=TICKER_STYLE_PRESETS, default=TICKER_STYLE_CLASSIC)
+    ticker_style_preset = models.CharField(max_length=10, choices=TICKER_STYLE_PRESETS, default=TICKER_STYLE_CLASSIC,
+                                           help_text="Visual preset for the ticker. Individual colors, sizes and speed "
+                                                     "can be overridden by the fields below.")
     ticker_font_size_px = models.PositiveSmallIntegerField(
         null=True, blank=True,
         help_text="Override preset font size (px). Leave blank to use preset.",

@@ -9,7 +9,9 @@ from screens.models.source import Source
 class PlaylistEntry(models.Model):
     playlist = models.ForeignKey("Playlist", on_delete=models.CASCADE)
     source = models.ForeignKey(Source, on_delete=models.CASCADE, verbose_name="Content")
-    number = models.IntegerField()
+    number = models.IntegerField(
+        help_text="Play order within this playlist: lower numbers play first. "
+                  "Duplicate numbers are allowed but their relative order is then undefined.")
     duration = models.IntegerField(null=True, blank=True,
                                    help_text="seconds to display source for; leave blank to use the playlist's default duration (ignored for videos)")
 

@@ -6,8 +6,10 @@ from screens.models import Playlist
 
 
 class PlaylistRelation(models.Model):
-    super_list = models.ForeignKey(Playlist, on_delete=models.PROTECT, related_name="children_list", verbose_name="Parent") #limit_choices_to
-    inheriting_list = models.ForeignKey(Playlist, on_delete=models.CASCADE, related_name="parents_list")
+    super_list = models.ForeignKey(Playlist, on_delete=models.PROTECT, related_name="children_list", verbose_name="Parent",
+                                   help_text="The parent playlist to inherit content from.") #limit_choices_to
+    inheriting_list = models.ForeignKey(Playlist, on_delete=models.CASCADE, related_name="parents_list",
+                                        help_text="The child playlist that receives the parent's content.")
 
     def __str__(self):
         return f"{self.inheriting_list} inherits from {self.super_list}"

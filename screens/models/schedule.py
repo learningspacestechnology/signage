@@ -9,8 +9,11 @@ from screens.models import Playlist
 class Schedule(models.Model):
     name = models.TextField()
     description = models.TextField(blank=True)
-    default_playlist = models.ForeignKey(Playlist, on_delete=models.PROTECT)
-    is_default = models.BooleanField(default=False)
+    default_playlist = models.ForeignKey(Playlist, on_delete=models.PROTECT,
+                                         help_text="Fallback playlist shown whenever no rule currently matches the date and time.")
+    is_default = models.BooleanField(default=False,
+                                     help_text="Marks the schedule used app-wide when a screen has none assigned. "
+                                               "Only one schedule should be the default.")
     teams = models.ManyToManyField("screens.Team", related_name="schedules")
 
     def clean(self):
