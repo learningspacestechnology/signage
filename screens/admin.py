@@ -70,6 +70,19 @@ class TeamScopedAdminMixin:
             obj.teams.add(active)
 
 
+class HideChangeFormDeleteMixin:
+    """Hide the Delete button on the change form (it confuses operators).
+
+    Delete remains available via the changelist's bulk action and the object's
+    delete confirmation page; only the submit-row button is hidden, by setting
+    ``show_delete`` to False (read by Django's ``submit_row`` tag).
+    """
+
+    def change_view(self, request, object_id, form_url='', extra_context=None):
+        extra_context = {**(extra_context or {}), 'show_delete': False}
+        return super().change_view(request, object_id, form_url, extra_context=extra_context)
+
+
 class PlaylistEntryInline(OrderableAdmin, TabularInline):
     model = PlaylistEntry
     ordering_field = 'number'
@@ -124,7 +137,7 @@ class PlaylistParentsInline(TabularInline):
 
 
 @admin.register(Playlist)
-class PlaylistDisplay(TeamScopedAdminMixin, ModelAdmin):
+class PlaylistDisplay(HideChangeFormDeleteMixin, TeamScopedAdminMixin, ModelAdmin):
     list_display = ('name', 'show_source_count', 'show_teams', 'last_updated')
     search_fields = ('name', 'description')
     readonly_fields = ('last_updated',)
@@ -181,7 +194,7 @@ class ScheduleRuleInline(StackedInline):
 
 
 @admin.register(Schedule)
-class ScheduleDisplay(TeamScopedAdminMixin, ModelAdmin):
+class ScheduleDisplay(HideChangeFormDeleteMixin, TeamScopedAdminMixin, ModelAdmin):
     list_display = ('name', 'default_playlist', 'is_default', 'show_teams')
     search_fields = ('name', 'description')
     list_filter = ('is_default',)
@@ -210,7 +223,7 @@ class PlaylistListFilter(admin.SimpleListFilter):
 
 
 @admin.register(Source)
-class SourceDisplay(TeamScopedAdminMixin, ModelAdmin):
+class SourceDisplay(HideChangeFormDeleteMixin, TeamScopedAdminMixin, ModelAdmin):
     readonly_fields = ('image_preview',)
     list_display = ('thumbnail', 'name', 'show_type', 'resolution', 'created_by', 'playlist_names', 'show_teams', 'created_at', 'valid_from', 'expires_at')
     list_filter = (PlaylistListFilter, 'type')
