@@ -1,12 +1,30 @@
+from django.contrib.admin.views.decorators import staff_member_required
 from django.db.models import Count
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.shortcuts import render, get_object_or_404
-from django.urls import resolve, Resolver404
+from django.urls import resolve, reverse, Resolver404
 from urllib.parse import urlparse
 from screens import models
+from screens.team_scope import scope_to_user_teams
 from screens.utils import get_client_ip, get_client_hostname
 from datetime import datetime
 from advertising.settings import AUTO_MAKE_SCREENS_FOR_NEW_IPS, UNCONFIGURED_SCREEN_MESSAGE
+
+
+_TICKER_SENTINEL_PLAYLIST_ID = -1
+_TICKER_SENTINEL_LAST_UPDATED = "1970-01-01T00:00:00"
+
+
+def _ticker_redirect_payload(screen):
+    """Single-iframe playlist that points the outer Vue at the wrapper template."""
+    wrapper_url = reverse("screens/screen_wrapper", args=[screen.id])
+    return {
+        "playlist": [{"src": wrapper_url, "type": models.Source.IFRAME, "duration": 86400}],
+        "interspersed": [],
+        "current_playlist": _TICKER_SENTINEL_PLAYLIST_ID,
+        "playlist_last_updated": _TICKER_SENTINEL_LAST_UPDATED,
+        "screen_id": screen.id,
+    }
 
 
 def get_screen(request):
@@ -73,7 +91,7 @@ def view_screen(request, screen_id):
         if screen.schedule:
             current_playlist = screen.schedule.get_playlist()
             view_dict = {
-                'playlist': current_playlist.get_sources(),
+                'playlist': current_playlist.get_resolved_sources(),
                 'interspersed': models.PlaylistEntry(source=current_playlist.interspersed_source),
                 'screen_interspersed': models.PlaylistEntry(source=screen.interspersed_source),
                 "current_playlist": current_playlist.pk,
@@ -91,7 +109,7 @@ def view_playlist(request, playlist_id):
     try:
         current_playlist = models.Playlist.objects.get(id=playlist_id)
         view_dict = {
-            'playlist': current_playlist.get_sources(),
+            'playlist': current_playlist.get_resolved_sources(),
             'interspersed': models.PlaylistEntry(source=current_playlist.interspersed_source),
             "current_playlist": current_playlist.pk,
             "playlist_last_updated": current_playlist.last_updated.isoformat()
@@ -111,13 +129,33 @@ def view_screen_automatic_json(request):
 def view_screen_json(request, screen_id):
     try:
         screen = models.Screen.objects.get(id=screen_id)
-        if screen.schedule:
-            current_playlist = screen.schedule.get_playlist()
-            return JsonResponse(render_playlist_json(current_playlist, screen_interspersed=screen.interspersed_source, screen_id=screen_id))
-        else:
-            return _unconfigured_json(request)
     except models.Screen.DoesNotExist:
         return JsonResponse({"error": "screen doesnt exist"}, status=404)
+    if not screen.schedule:
+        return _unconfigured_json(request)
+    if screen.has_ticker():
+        return JsonResponse(_ticker_redirect_payload(screen))
+    current_playlist = screen.schedule.get_playlist()
+    return JsonResponse(render_playlist_json(
+        current_playlist,
+        screen_interspersed=screen.interspersed_source,
+        screen_id=screen_id,
+    ))
+
+
+def view_screen_wrapper(request, screen_id):
+    screen = get_object_or_404(models.Screen, id=screen_id)
+    if not screen.has_ticker():
+        # Ticker was disabled between page load and now; bounce to plain screen URL.
+        return HttpResponseRedirect(reverse("screens/screen_view", args=[screen_id]))
+    if not screen.schedule:
+        return HttpResponse("No playlist set for this screen")
+    current_playlist = screen.schedule.get_playlist()
+    return render(request, "screens/screen_with_ticker.html", {
+        "screen": screen,
+        "style": screen.resolved_ticker_style(),
+        "current_playlist_id": current_playlist.pk,
+    })
 
 
 def view_playlist_json(request, playlist_id):
@@ -137,7 +175,7 @@ def render_playlist_json(playlist, screen_interspersed=None, screen_id=None):
             {"src": screen_interspersed.src(), "type": screen_interspersed.type})
 
     return {
-        'playlist': list(map(lambda x: {"src": x.source.src(), "type": x.source.type, "duration": x.duration}, playlist.get_sources())),
+        'playlist': list(map(lambda x: {"src": x.source.src(), "type": x.source.type, "duration": x.duration}, playlist.get_resolved_sources())),
         'interspersed': interspersed,
         "current_playlist": playlist.pk,
         "playlist_last_updated": playlist.last_updated.isoformat(),
@@ -145,9 +183,44 @@ def render_playlist_json(playlist, screen_interspersed=None, screen_id=None):
     }
 
 
+@staff_member_required
 def view_playlist_tree_json(request):
-    playlists = models.Playlist.objects.prefetch_related("children_list").annotate(
-        source_count=Count("playlistentry")
+    accessible_ids = set(
+        scope_to_user_teams(models.Playlist.objects.all(), request)
+        .values_list("id", flat=True)
+    )
+
+    visible_ids = set(accessible_ids)
+
+    frontier = set(accessible_ids)
+    while frontier:
+        parents = set(
+            models.PlaylistRelation.objects
+                .filter(inheriting_list_id__in=frontier)
+                .values_list("super_list_id", flat=True)
+        ) - visible_ids
+        if not parents:
+            break
+        visible_ids |= parents
+        frontier = parents
+
+    frontier = set(accessible_ids)
+    while frontier:
+        children = set(
+            models.PlaylistRelation.objects
+                .filter(super_list_id__in=frontier)
+                .values_list("inheriting_list_id", flat=True)
+        ) - visible_ids
+        if not children:
+            break
+        visible_ids |= children
+        frontier = children
+
+    playlists = (
+        models.Playlist.objects
+        .filter(id__in=visible_ids)
+        .prefetch_related("children_list")
+        .annotate(source_count=Count("playlistentry"))
     )
     out = {}
     for pl in playlists:
@@ -155,8 +228,10 @@ def view_playlist_tree_json(request):
             "name": pl.name,
             "description": pl.description,
             "source_count": pl.source_count,
-            "plays_everything": pl.plays_everything,
-            "children": list(pl.children_list.values_list("inheriting_list_id", flat=True)),
+            "children": [
+                child_id for child_id in pl.children_list.values_list("inheriting_list_id", flat=True)
+                if child_id in visible_ids
+            ],
         }
     return JsonResponse(out)
 
@@ -168,9 +243,24 @@ def _get_meta(request, screen):
     playlist = screen.schedule.get_playlist()
     screen.last_seen = datetime.now()
     screen.save()
-    out = {"current_playlist": playlist.pk,
-           "playlist_last_updated": playlist.last_updated.isoformat()}
-    return JsonResponse(out)
+
+    if screen.has_ticker():
+        # Match the sentinel returned by /api/screen so outer Vue's diff stays quiet
+        # while the wrapper is in charge. Real text/playlist live in extra fields.
+        return JsonResponse({
+            "current_playlist": _TICKER_SENTINEL_PLAYLIST_ID,
+            "playlist_last_updated": _TICKER_SENTINEL_LAST_UPDATED,
+            "ticker_enabled": True,
+            "ticker_text": screen.ticker_text,
+            "ticker_current_playlist": playlist.pk,
+        })
+
+    return JsonResponse({
+        "current_playlist": playlist.pk,
+        "playlist_last_updated": playlist.last_updated.isoformat(),
+        "ticker_enabled": False,
+        "ticker_text": "",
+    })
 
 
 def get_meta(request):

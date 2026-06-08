@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Screen {{ screen.id }}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; background: black; }
+    body { width: 100vw; height: 100vh; overflow: hidden; }
+    .vue-frame {
+      position: absolute; top: 0; left: 0;
+      width: 100vw;
+      height: {% if screen.ticker_layout == "SHRINK" %}calc(100vh - {{ style.bar_height_vh }}vh){% else %}100vh{% endif %};
+      border: 0;
+    }
+    .ticker-bar {
+      position: fixed; bottom: 0; left: 0;
+      width: 100vw; height: {{ style.bar_height_vh }}vh;
+      background: transparent; color: {{ style.font_color }};
+      overflow: hidden; white-space: nowrap;
+      display: flex; align-items: center;
+      font-family: sans-serif; font-size: {{ style.font_size }}px;
+      z-index: 1000;
+    }
+    /* Separate background layer so opacity affects only the fill, not the text. */
+    .ticker-bg {
+      position: absolute; inset: 0;
+      background: {{ style.bg_color }};
+      opacity: {{ style.bg_opacity }}%;
+      pointer-events: none;
+    }
+    .ticker-content {
+      position: relative;
+      display: inline-block;
+      padding-left: 100vw;
+      animation: marquee var(--duration, 30s) linear infinite;
+    }
+    @keyframes marquee {
+      from { transform: translate3d(0, 0, 0); }
+      to   { transform: translate3d(-100%, 0, 0); }
+    }
+  </style>
+</head>
+<body>
+  <iframe id="vue-frame" class="vue-frame" src="/playlist/{{ current_playlist_id }}"></iframe>
+  <div class="ticker-bar">
+    <div class="ticker-bg"></div>
+    <span id="ticker-content" class="ticker-content">{{ screen.ticker_text }}</span>
+  </div>
+  {{ screen.ticker_text|json_script:"initial-ticker-text" }}
+  <script>
+    const SCREEN_ID = {{ screen.id }};
+    const SCROLL_SPEED = {{ style.scroll_speed }};
+    let lastText = JSON.parse(document.getElementById("initial-ticker-text").textContent);
+    let lastPlaylistId = {{ current_playlist_id }};
+
+    function setMarqueeDuration() {
+      const el = document.getElementById("ticker-content");
+      const distance = el.scrollWidth + window.innerWidth;
+      el.style.setProperty("--duration", (distance / SCROLL_SPEED) + "s");
+    }
+    setMarqueeDuration();
+    window.addEventListener("resize", setMarqueeDuration);
+
+    // Turning the ticker OFF is handled by outer Vue's own meta diff
+    // (the sentinel current_playlist flips back to a real id, Vue re-fetches
+    // /api/screen/<id>, and the wrapper iframe is replaced). This poll only
+    // handles in-place updates while the wrapper is still alive.
+    function poll() {
+      fetch("/api/meta/" + SCREEN_ID).then(r => r.json()).then(data => {
+        if (data.ticker_text !== undefined && data.ticker_text !== lastText) {
+          document.getElementById("ticker-content").textContent = data.ticker_text;
+          lastText = data.ticker_text;
+          setMarqueeDuration();
+        }
+        if (data.ticker_current_playlist && data.ticker_current_playlist !== lastPlaylistId) {
+          document.getElementById("vue-frame").src = "/playlist/" + data.ticker_current_playlist;
+          lastPlaylistId = data.ticker_current_playlist;
+        }
+      }).catch(console.error);
+    }
+    setInterval(poll, 60000);
+  </script>
+</body>
+</html>

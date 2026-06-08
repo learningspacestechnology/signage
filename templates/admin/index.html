@@ -1,0 +1,128 @@
+{% extends 'admin/base.html' %}
+
+{% load i18n %}
+
+{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block branding %}
+    {% include "unfold/helpers/site_branding.html" %}
+{% endblock %}
+
+{% block content %}
+    {# ---- Quick actions ------------------------------------------------ #}
+    {% if can_add_source or can_add_playlist %}
+        <div class="flex flex-wrap gap-3 mb-8">
+            {% if can_add_source %}
+                <a href="{{ bulk_upload_url }}"
+                   class="font-medium inline-flex items-center gap-2 px-4 py-2.5 rounded-default text-[14px] border border-base-200 bg-primary-600 text-white hover:bg-primary-600/80 dark:border-base-700">
+                    <span class="material-symbols-outlined text-lg">upload_file</span>
+                    {% translate "Bulk Upload Content" %}
+                </a>
+                <a href="{{ add_content_url }}"
+                   class="font-medium inline-flex items-center gap-2 px-4 py-2.5 rounded-default text-[14px] border border-base-200 bg-white text-important hover:bg-base-100/80 dark:border-base-700 dark:bg-transparent">
+                    <span class="material-symbols-outlined text-lg">add_photo_alternate</span>
+                    {% translate "Add Content" %}
+                </a>
+            {% endif %}
+            {% if can_add_playlist %}
+                <a href="{{ add_playlist_url }}"
+                   class="font-medium inline-flex items-center gap-2 px-4 py-2.5 rounded-default text-[14px] border border-base-200 bg-white text-important hover:bg-base-100/80 dark:border-base-700 dark:bg-transparent">
+                    <span class="material-symbols-outlined text-lg">queue_play_next</span>
+                    {% translate "Add Playlist" %}
+                </a>
+            {% endif %}
+        </div>
+    {% endif %}
+
+    <div class="flex flex-col lg:flex-row lg:gap-8">
+        <div class="grow flex flex-col gap-8">
+
+            {# ---- Stat cards -------------------------------------------- #}
+            <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
+                {% include "admin/_dashboard_stat_card.html" with href=screens_url icon="monitor" label=_("Screens") value=screens_total subtext=_("online") subvalue=screens_online %}
+                {% include "admin/_dashboard_stat_card.html" with href=content_url icon="perm_media" label=_("Content Items") value=content_count %}
+                {% include "admin/_dashboard_stat_card.html" with href=playlists_url icon="queue_play_next" label=_("Playlists") value=playlists_count %}
+                {% include "admin/_dashboard_stat_card.html" with href=schedules_url icon="calendar_today" label=_("Schedules") value=schedules_count %}
+            </div>
+
+            {# ---- Charts ------------------------------------------------ #}
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {# Screens online vs offline #}
+                <div class="bg-white flex flex-col p-6 rounded-default shadow-xs border border-base-200 dark:bg-base-900 dark:border-base-800">
+                    <h2 class="font-semibold text-[15px] text-important mb-4">{% translate "Screens online vs offline" %}</h2>
+                    {% if screens_total %}
+                        <div class="flex flex-row items-center gap-6">
+                            <div class="relative w-40 shrink-0">
+                                <canvas class="chart" data-type="doughnut" data-value="{{ screens_chart_data }}" height="160"></canvas>
+                            </div>
+                            <div class="flex flex-col gap-3 text-sm">
+                                <div class="flex items-center gap-2">
+                                    <span class="inline-block w-3 h-3 rounded-full" style="background:#22c55e"></span>
+                                    <span class="text-important font-semibold">{{ screens_online }}</span>
+                                    <span class="text-base-500">{% translate "online" %}</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span class="inline-block w-3 h-3 rounded-full" style="background:#ef4444"></span>
+                                    <span class="text-important font-semibold">{{ screens_offline }}</span>
+                                    <span class="text-base-500">{% translate "offline" %}</span>
+                                </div>
+                            </div>
+                        </div>
+                    {% else %}
+                        <p class="text-base-500 text-sm py-8 text-center">{% translate "No screens for this team yet." %}</p>
+                    {% endif %}
+                </div>
+
+                {# Content by type #}
+                <div class="bg-white flex flex-col p-6 rounded-default shadow-xs border border-base-200 dark:bg-base-900 dark:border-base-800">
+                    <h2 class="font-semibold text-[15px] text-important mb-4">{% translate "Content by type" %}</h2>
+                    {% if content_count %}
+                        <div class="flex flex-row items-center gap-6">
+                            <div class="relative w-40 shrink-0">
+                                <canvas class="chart" data-type="doughnut" data-value="{{ content_type_chart_data }}" height="160"></canvas>
+                            </div>
+                            <div class="flex flex-col gap-3 text-sm">
+                                {% for c in content_by_type %}
+                                    <div class="flex items-center gap-2">
+                                        <span class="inline-block w-3 h-3 rounded-full" style="background:{{ c.color }}"></span>
+                                        <span class="text-important font-semibold">{{ c.count }}</span>
+                                        <span class="text-base-500">{{ c.label }}</span>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    {% else %}
+                        <p class="text-base-500 text-sm py-8 text-center">{% translate "No content for this team yet." %}</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            {# ---- Offline screens watchlist ----------------------------- #}
+            <div class="bg-white flex flex-col p-6 rounded-default shadow-xs border border-base-200 dark:bg-base-900 dark:border-base-800">
+                <h2 class="font-semibold text-[15px] text-important mb-4">{% translate "Offline screens" %}</h2>
+                {% if offline_screens %}
+                    <ul class="flex flex-col divide-y divide-base-200 dark:divide-base-800">
+                        {% for s in offline_screens %}
+                            <li class="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
+                                <span class="material-symbols-outlined text-red-500 text-xl">tv_off</span>
+                                <a href="{{ s.url }}" class="text-important font-medium hover:underline">{{ s.name }}</a>
+                                <span class="ml-auto text-base-500 text-sm">
+                                    {% blocktranslate with since=s.last_seen|timesince %}last seen {{ since }} ago{% endblocktranslate %}
+                                </span>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <p class="text-base-500 text-sm flex items-center gap-2">
+                        <span class="material-symbols-outlined text-green-500">check_circle</span>
+                        {% translate "All screens are online." %}
+                    </p>
+                {% endif %}
+            </div>
+
+        </div>
+
+        {# ---- Recent actions (Unfold helper) --------------------------- #}
+        {% include "unfold/helpers/history.html" %}
+    </div>
+{% endblock %}

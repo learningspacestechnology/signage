@@ -1,0 +1,8 @@
+{% extends "admin/base_site.html" %}
+{% block title %}No team assigned{% endblock %}
+{% block content %}
+<h1>No team assigned</h1>
+<p>Your account ({{ user.username }}) is not a member of any team yet, so there
+is nothing for you to manage in the admin.</p>
+<p>Please contact a platform administrator and ask them to add you to a team.</p>
+{% endblock %}

@@ -49,9 +49,10 @@ INSTALLED_APPS = [
     'django_cleanup.apps.CleanupConfig',  # TODO will need to detect image load failure and reload page if it occurs
 ]
 
-# Celery settings
-CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://redis:6379/0')
-CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', 'redis://redis:6379/0')
+# Celery settings — defaults; overridden from the environment in the
+# deploy settings module (signage_deploy/docker/advertising/settings.py).
+CELERY_BROKER_URL = 'redis://redis:6379/0'
+CELERY_RESULT_BACKEND = 'redis://redis:6379/0'
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
@@ -86,10 +87,16 @@ CELERY_BEAT_SCHEDULE = {
     },
 }
 
+ADMIN_SITE_NAME = "Display Screen Admin"
+
 UNFOLD = {
-    "SITE_TITLE": "Display Screen Admin",
-    "SITE_HEADER": "Display Screen Admin",
+    # Callables so the name is resolved from settings.ADMIN_SITE_NAME at render
+    # time — any layer that overrides ADMIN_SITE_NAME takes effect without
+    # rebuilding this dict. See advertising.admin.site_name.
+    "SITE_TITLE": "advertising.admin.site_name",
+    "SITE_HEADER": "advertising.admin.site_name",
     "DASHBOARD_CALLBACK": "advertising.admin.dashboard_callback",
+    "ENVIRONMENT": "advertising.admin.active_team_environment",
     "SITE_URL": "/",
     "SHOW_HISTORY": True,
     "SHOW_VIEW_ON_SITE": True,
@@ -102,34 +109,40 @@ UNFOLD = {
                 "separator": False,
                 "items": [
                     {
-                        "title": "Screens",
-                        "icon": "monitor",
-                        "link": reverse_lazy("admin:screens_screen_changelist"),
+                        "title": "Bulk Upload Content",
+                        "icon": "upload_file",
+                        "link": reverse_lazy("admin:screens_source_bulk_create"),
+                        "permission": lambda request: request.user.has_perm("screens.add_source"),
+                    },
+                    {
+                        "title": "Content",
+                        "icon": "perm_media",
+                        "link": reverse_lazy("admin:screens_source_changelist"),
+                        "permission": lambda request: request.user.has_perm("screens.view_source"),
                     },
                     {
                         "title": "Playlists",
                         "icon": "queue_play_next",
                         "link": reverse_lazy("admin:screens_playlist_changelist"),
-                    },
-                    {
-                        "title": "Schedules",
-                        "icon": "calendar_today",
-                        "link": reverse_lazy("admin:screens_schedule_changelist"),
+                        "permission": lambda request: request.user.has_perm("screens.view_playlist"),
                     },
                     {
                         "title": "Playlist Tree",
                         "icon": "account_tree",
                         "link": reverse_lazy("admin:screens_playlist_tree"),
+                        "permission": lambda request: request.user.has_perm("screens.view_playlist"),
                     },
                     {
-                        "title": "Sources",
-                        "icon": "perm_media",
-                        "link": reverse_lazy("admin:screens_source_changelist"),
+                        "title": "Schedules",
+                        "icon": "calendar_today",
+                        "link": reverse_lazy("admin:screens_schedule_changelist"),
+                        "permission": lambda request: request.user.has_perm("screens.view_schedule"),
                     },
                     {
-                        "title": "Bulk Upload Sources",
-                        "icon": "upload_file",
-                        "link": reverse_lazy("admin:screens_source_bulk_create"),
+                        "title": "Screens",
+                        "icon": "monitor",
+                        "link": reverse_lazy("admin:screens_screen_changelist"),
+                        "permission": lambda request: request.user.has_perm("screens.view_screen"),
                     },
                 ],
             },
@@ -142,22 +155,26 @@ UNFOLD = {
                         "title": "Buildings",
                         "icon": "location_on",
                         "link": reverse_lazy("admin:room_schedules_building_changelist"),
+                        "permission": lambda request: request.user.has_perm("room_schedules.view_building"),
                     },
                     {
                         "title": "Rooms",
                         "icon": "meeting_room",
                         "link": reverse_lazy("admin:room_schedules_room_changelist"),
+                        "permission": lambda request: request.user.has_perm("room_schedules.view_room"),
                     },
                     {
                         "title": "Room Groups",
                         "icon": "groups",
                         "link": reverse_lazy("admin:room_schedules_roomgroup_changelist"),
+                        "permission": lambda request: request.user.has_perm("room_schedules.view_roomgroup"),
                     },
                     {
                         "title": "O365 rooms",
                         "icon": "work",
                         "link": reverse_lazy("admin:room_schedules_o365_assigned"),
                         "active": lambda request: request.path.startswith("/admin/room_schedules/o365_"),
+                        "permission": lambda request: request.user.has_perm("room_schedules.change_room"),
                     },
                 ],
             },
@@ -170,16 +187,18 @@ UNFOLD = {
                         "title": "Periodic Tasks",
                         "icon": "schedule",
                         "link": reverse_lazy("admin:app_list", kwargs={"app_label": "django_celery_beat"}),
+                        "permission": lambda request: request.user.has_perm("django_celery_beat.view_periodictask"),
                     },
                     {
                         "title": "Task Results",
                         "icon": "task_alt",
                         "link": reverse_lazy("admin:app_list", kwargs={"app_label": "django_celery_results"}),
+                        "permission": lambda request: request.user.has_perm("django_celery_results.view_taskresult"),
                     },
                 ],
             },
             {
-                "title": "Users & Groups",
+                "title": "Users, Groups & Teams",
                 "separator": True,
                 "collapsible": True,
                 "items": [
@@ -187,11 +206,19 @@ UNFOLD = {
                         "title": "Users",
                         "icon": "person",
                         "link": reverse_lazy("admin:auth_user_changelist"),
+                        "permission": lambda request: request.user.has_perm("auth.view_user"),
                     },
                     {
                         "title": "Groups",
                         "icon": "group",
                         "link": reverse_lazy("admin:auth_group_changelist"),
+                        "permission": lambda request: request.user.has_perm("auth.view_group"),
+                    },
+                    {
+                        "title": "Teams",
+                        "icon": "groups",
+                        "link": reverse_lazy("admin:screens_team_changelist"),
+                        "permission": lambda request: request.user.is_superuser,
                     },
                 ],
             },
@@ -206,6 +233,7 @@ MIDDLEWARE = [
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'advertising.middleware.IpAccessControlMiddleware',
+    'advertising.middleware.ActiveTeamMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -226,6 +254,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'advertising.context_processors.entra_flags',
             ],
         },
     },
@@ -297,6 +326,39 @@ AUTO_MAKE_SCREENS_FOR_NEW_IPS = False
 USE_LAST_FORWARDED_FOR_IP = False
 USE_FIRST_FORWARDED_FOR_IP = False
 IP_ACCESS_CONTROL_ENABLED = True
+
+
+# --- Microsoft Entra ID interactive sign-in ---
+# Uses the already-installed `msal` library and a DEDICATED Entra app
+# registration (separate from the O365_* calendar app). These are defaults;
+# the deploy settings module (signage_deploy/docker/advertising/settings.py)
+# overrides them from the environment.
+ENTRA_AUTH_ENABLED = True
+ENTRA_CLIENT_ID = ''
+ENTRA_TENANT_ID = ''
+ENTRA_CLIENT_SECRET = ''
+# Defaults to https://login.microsoftonline.com/<tenant> when a tenant is set
+# (computed in the deploy settings module).
+ENTRA_AUTHORITY = ''
+# Absolute https URI registered in Azure; must match exactly.
+ENTRA_REDIRECT_URI = ''
+
+# Auto-provisioning policy — safe by default: created users get NO access
+# (is_staff=False, no Team) until an existing admin promotes them.
+ENTRA_AUTO_CREATE_USERS = True
+ENTRA_AUTO_GRANT_IS_STAFF = False
+ENTRA_DEFAULT_TEAM_NAME = ''  # '' = none
+# Optional allow-list of UPN domains permitted to sign in.
+# Empty list = allow any account in the tenant.
+ENTRA_ALLOWED_DOMAINS = []
+
+# ModelBackend first so password logins (e.g. the superuser fallback)
+# short-circuit before the Entra backend, which only acts when given `claims`.
+AUTHENTICATION_BACKENDS = [
+    'django.contrib.auth.backends.ModelBackend',
+    'advertising.entra_auth.EntraOIDCBackend',
+]
+LOGIN_URL = '/admin/login/'
 UNCONFIGURED_SCREEN_MESSAGE = ("To get this display set up, please contact your local IT support team and provide the details below.")
 MAX_IMG_WIDTH = 1920
 MAX_IMG_HEIGHT = 1080

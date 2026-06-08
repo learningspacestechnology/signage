@@ -1,0 +1,12 @@
+{% load i18n %}
+
+{# Project override: the public "site" only serves screens, so a "Return to #}
+{# site" link from the login page is useless. We drop it but keep the theme #}
+{# switcher. #}
+<div class="absolute flex flex-row items-center justify-between left-0 m-4 right-0 top-0">
+    {% if not theme %}
+        <div class="ml-auto">
+            {% include "unfold/helpers/theme_switch_dropdown.html" %}
+        </div>
+    {% endif %}
+</div>

@@ -27,15 +27,18 @@ class Source(models.Model):
         (VIDEO, 'Video'),
         (IFRAME, 'Website'),
     )
-    type = models.CharField(max_length=3, choices=types)
-    name = models.TextField()
+    type = models.CharField(max_length=3, choices=types,
+                            help_text="Image and Video play a file you upload. Website embeds a live web page (URL) as an iframe.")
+    name = models.TextField(help_text="A label for this content, shown to operators in lists and playlists.")
     file = models.FileField(upload_to=get_file_path,
                             null=True,
                             blank=True,
                             help_text=f"resolution of files should be {MAX_IMG_WIDTH}x{MAX_IMG_HEIGHT}, videos must be mp4")
     url = models.URLField(blank=True, verbose_name="Website Address", help_text="only required if website type")
-    expires_at = models.DateTimeField(blank=True, null=True, default=None)
-    valid_from = models.DateTimeField(blank=True, null=True, default=None)
+    valid_from = models.DateTimeField(blank=True, null=True, default=None,
+                                      help_text="Content is hidden from playback before this date/time. Leave blank for no start limit.")
+    expires_at = models.DateTimeField(blank=True, null=True, default=None,
+                                      help_text="Content stops playing after this date/time and is later cleaned up automatically. Leave blank for no end limit.")
     created_at = models.DateTimeField(auto_now_add=True)
     created_by = models.ForeignKey(
         'auth.User', null=True, blank=True, on_delete=models.SET_NULL,
@@ -45,9 +48,13 @@ class Source(models.Model):
     height = models.PositiveIntegerField(null=True, blank=True, editable=False)
     playlists = models.ManyToManyField("Playlist", related_name="sources", symmetrical=False,
                                        through="PlaylistEntry", through_fields=("source", "playlist"),
-                                       help_text="All sources that would be played by these playlists will be included in this one too.",
+                                       help_text="All content that would be played by these playlists will be included in this one too.",
                                        blank=True)
+    teams = models.ManyToManyField("screens.Team", related_name="sources")
 
+    class Meta:
+        verbose_name = "content"
+        verbose_name_plural = "content"
 
     def __str__(self):
         return self.name
@@ -55,6 +62,8 @@ class Source(models.Model):
     def clean(self):
         if hasattr(self, "bulk_create") and self.bulk_create:
             return
+        if self.pk and not self.teams.exists():
+            raise ValidationError("Source must belong to at least one team.")
         if self.type in [self.IMAGE, self.VIDEO] and self.file.name is None:
             raise ValidationError({'file': "File cannot be blank for image or video type sources"})
         if self.type == self.VIDEO and self.file.name[-4:] != ".mp4":

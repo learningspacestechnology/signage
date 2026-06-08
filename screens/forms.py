@@ -67,7 +67,7 @@ class MultiFileField(FileField):
 
 
 class SourceBulkCreateForm(PlaylistAssigningSourceForm):
-    files = MultiFileField(help_text=f"Only upload one type of file at a time resolution of files should be {MAX_IMG_WIDTH}x{MAX_IMG_HEIGHT}, videos must be mp4")
+    files = MultiFileField(help_text=f"Upload one type of file at a time. Images must be at most {MAX_IMG_WIDTH}x{MAX_IMG_HEIGHT}; videos must be .mp4.")
 
     def is_valid(self):
         """Return True if the form has no errors, or False otherwise."""
