@@ -8,7 +8,7 @@ and logs the user in through `advertising.entra_auth.EntraOIDCBackend`.
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import authenticate, login
-from django.shortcuts import redirect
+from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
 
@@ -70,6 +70,25 @@ def entra_callback(request):
             request, "Your Microsoft account is not permitted to sign in."
         )
         return redirect(login_url)
+
+    if not user.is_staff:
+        # Authenticated with Microsoft, but no admin access has been configured
+        # yet. Show a friendly "pending" page instead of bouncing them to the
+        # login screen (which the access-control middleware would otherwise do
+        # for a non-staff user). We deliberately don't log them in: there's no
+        # useful session to keep, and it avoids a confusing re-bounce on the
+        # next request. The auto-created stub is already saved, so an admin can
+        # find and configure them in the Users list.
+        return render(
+            request,
+            "admin/entra_unconfigured.html",
+            {
+                "entra_user": user,
+                "title": "Account not configured",
+                "site_title": settings.ADMIN_SITE_NAME,
+            },
+            status=200,
+        )
 
     login(request, user, backend=_BACKEND)
 

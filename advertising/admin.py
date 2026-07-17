@@ -12,8 +12,10 @@ from django.http import HttpResponseBadRequest, HttpResponseRedirect
 from django.urls import path, reverse
 from django.utils import timezone
 from unfold.admin import ModelAdmin
-from unfold.forms import AdminPasswordChangeForm, UserChangeForm, UserCreationForm
+from unfold.forms import AdminPasswordChangeForm, UserChangeForm
 from unfold.widgets import UnfoldAdminSelectWidget, UnfoldAdminTextInputWidget
+
+from advertising.forms import PreprovisionUserCreationForm
 
 from advertising.middleware import (
     ALL_TEAMS,
@@ -232,8 +234,56 @@ admin.site.unregister(TaskResult)
 @admin.register(User)
 class UserAdmin(BaseUserAdmin, ModelAdmin):
     form = UserChangeForm
-    add_form = UserCreationForm
+    add_form = PreprovisionUserCreationForm
     change_password_form = AdminPasswordChangeForm
+    add_fieldsets = (
+        (
+            None,
+            {
+                "classes": ("wide",),
+                "description": (
+                    "Create a user who signs in with Microsoft/Entra. Enter their "
+                    "sign-in address as the email; leave the password blank for "
+                    "SSO-only accounts."
+                ),
+                "fields": (
+                    "email",
+                    "first_name",
+                    "last_name",
+                    "is_staff",
+                    "teams",
+                    "password1",
+                    "password2",
+                ),
+            },
+        ),
+    )
+
+    def get_fieldsets(self, request, obj=None):
+        fieldsets = super().get_fieldsets(request, obj)
+        # Only superusers manage team membership (see CLAUDE.md); hide the field
+        # from everyone else on the add form.
+        if obj is None and not request.user.is_superuser:
+            fieldsets = [
+                (
+                    name,
+                    {**opts, "fields": tuple(f for f in opts["fields"] if f != "teams")},
+                )
+                for name, opts in fieldsets
+            ]
+        return fieldsets
+
+    def save_related(self, request, form, formsets, change):
+        super().save_related(request, form, formsets, change)
+        # `teams` only exists on the add form; a no-op on the change page.
+        # Gate on is_superuser so a crafted POST can't grant team access even
+        # though get_fieldsets already hides the field from non-superusers.
+        teams = form.cleaned_data.get("teams")
+        if teams and request.user.is_superuser:
+            from screens.models import TeamMembership
+
+            for team in teams:
+                TeamMembership.objects.get_or_create(user=form.instance, team=team)
 
 
 @admin.register(Group)
