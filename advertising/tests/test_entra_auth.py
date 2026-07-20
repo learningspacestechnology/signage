@@ -92,6 +92,10 @@ class EntraViewTests(TestCase):
 
     @patch("advertising.entra_views._build_msal_app")
     def test_callback_logs_user_in(self, build_app):
+        # A configured (staff) account signs in and is taken into the admin.
+        User.objects.create_user(
+            username="alice@example.com", email="alice@example.com", is_staff=True
+        )
         session = self.client.session
         session["entra_flow"] = {"state": "abc"}
         session.save()
@@ -102,6 +106,25 @@ class EntraViewTests(TestCase):
         self.assertEqual(resp.status_code, 302)
         self.assertEqual(resp["Location"], "/admin/")
         self.assertIn("_auth_user_id", self.client.session)
+        self.assertTrue(User.objects.filter(email="alice@example.com").exists())
+
+    @patch("advertising.entra_views._build_msal_app")
+    def test_callback_unconfigured_user_shows_pending_page(self, build_app):
+        # No pre-existing account and no auto-granted staff: the user is created
+        # but has no access, so they see the "pending configuration" page rather
+        # than being bounced to the login screen.
+        session = self.client.session
+        session["entra_flow"] = {"state": "abc"}
+        session.save()
+        build_app.return_value.acquire_token_by_auth_code_flow.return_value = {
+            "id_token_claims": CLAIMS,
+        }
+        resp = self.client.get("/admin/oauth/entra/callback/?code=xyz&state=abc")
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "successfully signed in")
+        self.assertContains(resp, "Alice Smith")
+        # Deliberately not logged in, and the stub still exists for an admin.
+        self.assertNotIn("_auth_user_id", self.client.session)
         self.assertTrue(User.objects.filter(email="alice@example.com").exists())
 
     @patch("advertising.entra_views._build_msal_app")
@@ -174,3 +197,63 @@ class EntraLoginTemplateTests(TestCase):
     def test_return_to_site_link_removed(self):
         resp = self.client.get(reverse("admin:login"))
         self.assertNotContains(resp, "Return to site")
+
+
+class PreprovisionUserAdminTests(TestCase):
+    """The streamlined 'add user' form pre-provisions Entra/SSO accounts."""
+
+    def setUp(self):
+        self.client = Client()
+        self.admin = User.objects.create_superuser(
+            username="root", email="root@example.com", password="rootpw"
+        )
+        self.client.force_login(self.admin)
+        self.team = Team.objects.create(name="Marketing")
+        self.add_url = reverse("admin:auth_user_add")
+
+    def _post(self, **overrides):
+        data = {
+            "email": "New.User@example.com",
+            "first_name": "New",
+            "last_name": "User",
+            "password1": "",
+            "password2": "",
+        }
+        data.update(overrides)
+        return self.client.post(self.add_url, data)
+
+    def test_add_sso_user_without_password(self):
+        resp = self._post(is_staff="on", teams=[self.team.pk])
+        self.assertEqual(resp.status_code, 302)  # created -> redirect to change page
+        user = User.objects.get(email="new.user@example.com")
+        self.assertEqual(user.username, "new.user@example.com")  # derived from email
+        self.assertFalse(user.has_usable_password())
+        self.assertTrue(user.is_staff)
+        self.assertTrue(user.teams.filter(pk=self.team.pk).exists())
+
+    def test_add_user_links_to_entra_login_no_duplicate(self):
+        # The crux: a stub created here is matched (not duplicated) on first SSO
+        # login, even when the incoming UPN differs only in case.
+        self._post(is_staff="on", teams=[self.team.pk])
+        stub = User.objects.get(email="new.user@example.com")
+        request = RequestFactory().get("/admin/oauth/entra/callback/")
+        with override_settings(ENTRA_AUTO_CREATE_USERS=True, ENTRA_ALLOWED_DOMAINS=[]):
+            user = EntraOIDCBackend().authenticate(
+                request,
+                claims={"preferred_username": "NEW.USER@example.com", "name": "New User"},
+            )
+        self.assertEqual(user.pk, stub.pk)
+        self.assertEqual(User.objects.filter(email="new.user@example.com").count(), 1)
+
+    def test_add_user_with_password_is_usable(self):
+        resp = self._post(password1="Str0ng!Passw0rd", password2="Str0ng!Passw0rd")
+        self.assertEqual(resp.status_code, 302)
+        user = User.objects.get(email="new.user@example.com")
+        self.assertTrue(user.has_usable_password())
+
+    def test_duplicate_email_rejected(self):
+        User.objects.create_user(username="existing", email="new.user@example.com")
+        resp = self._post()
+        self.assertEqual(resp.status_code, 200)  # re-render with errors, no redirect
+        self.assertContains(resp, "already exists")
+        self.assertEqual(User.objects.filter(email="new.user@example.com").count(), 1)

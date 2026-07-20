@@ -196,12 +196,13 @@ class ScheduleRuleInline(StackedInline):
 
 @admin.register(Schedule)
 class ScheduleDisplay(HideChangeFormDeleteMixin, TeamScopedAdminMixin, ModelAdmin):
-    list_display = ('name', 'default_playlist', 'is_default', 'show_teams')
+    # is_default is intentionally absent from list_display/list_filter/fieldsets: the
+    # field is still live on the model, just not editable here. Re-add to re-expose.
+    list_display = ('name', 'default_playlist', 'show_teams')
     search_fields = ('name', 'description')
-    list_filter = ('is_default',)
     list_select_related = ('default_playlist',)
     fieldsets = [
-        (None, {'fields': ['name', 'description', 'default_playlist', 'is_default', 'teams']}),
+        (None, {'fields': ['name', 'description', 'default_playlist', 'teams']}),
     ]
     inlines = [ScheduleRuleInline]
 

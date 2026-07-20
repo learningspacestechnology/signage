@@ -11,6 +11,7 @@ class Schedule(models.Model):
     description = models.TextField(blank=True)
     default_playlist = models.ForeignKey(Playlist, on_delete=models.PROTECT,
                                          help_text="Fallback playlist shown whenever no rule currently matches the date and time.")
+    # Not exposed in the admin — see ScheduleDisplay. Still read by get_default().
     is_default = models.BooleanField(default=False,
                                      help_text="Marks the schedule used app-wide when a screen has none assigned. "
                                                "Only one schedule should be the default.")
