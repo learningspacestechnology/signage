@@ -75,7 +75,13 @@ admin.site.get_urls = _patched_admin_get_urls
 
 
 def team_switcher_dropdown(request):
-    """Items for Unfold's SITE_DROPDOWN listing teams the user can switch to."""
+    """Teams the user can switch to, for the header's team picker.
+
+    Consumed by the `team_switcher_items` tag in
+    `screens/templatetags/team_switcher.py`, which the project's override of
+    `unfold/helpers/userlinks.html` renders. Not Unfold's `SITE_DROPDOWN` — that
+    setting is not configured.
+    """
     if not (request.user.is_authenticated and request.user.is_staff):
         return []
 
