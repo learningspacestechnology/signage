@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'screens',
     'room_schedules',
+    'helpdocs',
     'django_celery_beat',
     'django_celery_results',
     'recurrence',
@@ -219,6 +220,31 @@ UNFOLD = {
                         "icon": "groups",
                         "link": reverse_lazy("admin:screens_team_changelist"),
                         "permission": lambda request: request.user.is_superuser,
+                    },
+                ],
+            },
+            {
+                "title": "Help",
+                "separator": True,
+                "collapsible": False,
+                "items": [
+                    {
+                        "title": "Help & Tutorials",
+                        "icon": "help",
+                        "link": reverse_lazy("admin:help_index"),
+                        "active": lambda request: request.path.startswith("/admin/help/users"),
+                        "permission": lambda request: request.user.is_authenticated,
+                    },
+                    {
+                        "title": "Technical Docs",
+                        "icon": "menu_book",
+                        "link": reverse_lazy(
+                            "admin:help_section", kwargs={"audience": "technical"}
+                        ),
+                        "active": lambda request: request.path.startswith("/admin/help/technical"),
+                        "permission": lambda request: request.user.has_perm(
+                            "helpdocs.view_technical_docs"
+                        ),
                     },
                 ],
             },

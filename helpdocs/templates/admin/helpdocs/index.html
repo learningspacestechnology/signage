@@ -1,0 +1,81 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static help_links %}
+
+{% block extrastyle %}
+    {{ block.super }}
+    <link rel="stylesheet" href="{% static 'helpdocs/css/help.css' %}">
+{% endblock %}
+
+{% block content %}
+    {% if audience_tabs|length > 1 %}
+        <div class="flex flex-wrap gap-2 mb-6">
+            {% for tab in audience_tabs %}
+                <a href="{{ tab.url }}"
+                   class="font-medium inline-flex items-center gap-2 px-4 py-2.5 rounded-default text-[14px] border {% if tab.is_current %}border-base-200 bg-primary-600 text-white dark:border-base-700{% else %}border-base-200 bg-white text-important hover:bg-base-100/80 dark:border-base-700 dark:bg-transparent{% endif %}">
+                    <span class="material-symbols-outlined text-lg">{{ tab.icon }}</span>
+                    {{ tab.label }}
+                </a>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <div x-data='{
+            q: "",
+            items: {{ search_items_json }},
+            get needle() { return this.q.trim().toLowerCase() },
+            hit(text) { return !this.needle || text.includes(this.needle) },
+            get matches() { return this.items.filter(t => this.hit(t)).length }
+         }'>
+
+        {% if intro_html %}
+            <div class="bg-white p-6 mb-6 rounded-default shadow-xs border border-base-200 dark:bg-base-900 dark:border-base-800">
+                <div class="help-prose {% prose_classes %}">{{ intro_html|safe }}</div>
+            </div>
+        {% endif %}
+
+        {# ---- Search ---------------------------------------------------- #}
+        <div class="mb-6">
+            <label class="relative block">
+                <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-base-400 text-lg">search</span>
+                <input type="search" x-model="q" autocomplete="off"
+                       placeholder="{% translate 'Search these pages' %}"
+                       aria-label="{% translate 'Search these pages' %}"
+                       class="border bg-white font-medium max-w-2xl min-w-0 rounded-default shadow-xs text-font-default-light text-sm w-full py-2 pl-10 pr-3 border-base-200 focus:outline focus:outline-primary-600 dark:bg-base-900 dark:border-base-700 dark:text-font-default-dark">
+            </label>
+        </div>
+
+        {# ---- Sections -------------------------------------------------- #}
+        <div class="flex flex-col gap-6">
+            {% for section in sections %}
+                <section data-search="{{ section.search }}"
+                         x-show="hit($el.dataset.search)"
+                         class="bg-white p-6 rounded-default shadow-xs border border-base-200 dark:bg-base-900 dark:border-base-800">
+                    <h2 class="font-semibold text-[15px] text-important mb-4">{{ section.title }}</h2>
+                    <ul class="flex flex-col divide-y divide-base-200 dark:divide-base-800">
+                        {% for entry in section.entries %}
+                            <li data-search="{{ entry.search }}"
+                                x-show="hit($el.dataset.search)"
+                                class="py-3 first:pt-0 last:pb-0">
+                                <a href="{{ entry.url }}" class="group flex items-start gap-3">
+                                    <span class="material-symbols-outlined text-base-400 text-xl group-hover:text-primary-600">article</span>
+                                    <span class="flex flex-col gap-1 min-w-0">
+                                        <span class="text-important font-medium group-hover:underline">{{ entry.title }}</span>
+                                        <span class="text-base-500 text-sm">{{ entry.summary }}</span>
+                                    </span>
+                                </a>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                </section>
+            {% empty %}
+                <p class="text-base-500 text-sm">{% translate "No documentation pages are available yet." %}</p>
+            {% endfor %}
+        </div>
+
+        <p x-show="q && matches === 0" x-cloak
+           class="text-base-500 text-sm mt-6 flex items-center gap-2">
+            <span class="material-symbols-outlined text-lg">search_off</span>
+            {% translate "No pages match that search." %}
+        </p>
+    </div>
+{% endblock %}

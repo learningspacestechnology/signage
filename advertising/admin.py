@@ -22,6 +22,8 @@ from advertising.middleware import (
     ALL_TEAMS_SESSION_VALUE,
     SESSION_KEY as ACTIVE_TEAM_SESSION_KEY,
 )
+from helpdocs.admin_links import attach_help_links
+from helpdocs.urls import get_help_admin_urls
 from room_schedules.admin import get_o365_admin_urls
 
 _original_admin_get_urls = admin.site.get_urls
@@ -61,7 +63,12 @@ def _patched_admin_get_urls():
             name='set_active_team',
         ),
     ]
-    return get_o365_admin_urls() + custom + _original_admin_get_urls()
+    return (
+        get_help_admin_urls()
+        + get_o365_admin_urls()
+        + custom
+        + _original_admin_get_urls()
+    )
 
 
 admin.site.get_urls = _patched_admin_get_urls
@@ -138,6 +145,32 @@ def _doughnut_data(labels, data, colors):
         "labels": labels,
         "datasets": [{"data": data, "backgroundColor": colors, "borderWidth": 0}],
     })
+
+
+def _getting_started_steps():
+    """First-run path for the dashboard's Getting started panel.
+
+    Slugs must exist in helpdocs.registry; check_help_docs verifies that.
+    """
+    steps = (
+        ("login", "Sign in and find your way around", "getting-started"),
+        ("groups", "Understand teams and what you can see", "teams"),
+        ("perm_media", "Upload your content", "content"),
+        ("queue_play_next", "Build a playlist", "playlists"),
+        ("calendar_today", "Decide when it plays", "schedules"),
+        ("monitor", "Point a screen at it", "screens"),
+    )
+    return [
+        {
+            "icon": icon,
+            "label": label,
+            "url": reverse(
+                "admin:help_page",
+                kwargs={"audience": "users", "slug": slug},
+            ),
+        }
+        for icon, label, slug in steps
+    ]
 
 
 def dashboard_callback(request, context):
@@ -217,6 +250,12 @@ def dashboard_callback(request, context):
         "bulk_upload_url": reverse("admin:screens_source_bulk_create"),
         "add_content_url": reverse("admin:screens_source_add"),
         "add_playlist_url": reverse("admin:screens_playlist_add"),
+
+        # Getting-started panel. The step links go straight to the help pages
+        # rather than the admin screens, because a first-time user needs the
+        # explanation before the form.
+        "help_index_url": reverse("admin:help_index"),
+        "help_steps": _getting_started_steps(),
     })
     return context
 
@@ -330,3 +369,10 @@ class ClockedScheduleAdmin(BaseClockedScheduleAdmin, ModelAdmin):
 @admin.register(TaskResult)
 class TaskResultAdmin(TaskResultAdmin, ModelAdmin):
     pass
+
+
+# Must be the last statement in this module: it walks admin.site's registry, and
+# every unregister/register above would otherwise drop the attachment. This module
+# is imported from advertising/urls.py, i.e. after admin autodiscover has loaded
+# screens.admin and room_schedules.admin, so the registry is complete by now.
+attach_help_links()
