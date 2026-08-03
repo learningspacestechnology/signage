@@ -188,6 +188,14 @@ SHOTS = (
 
     # ---- Administration --------------------------------------------------
     Shot(
+        name='users-list',
+        path='/admin/auth/user/',
+        as_user=ADMIN,
+        wait_for='#changelist',
+        # Not captured with the filter drawer open: it overlays and dims the
+        # table, hiding the Teams column this shot is here to show.
+    ),
+    Shot(
         name='user-add',
         path='/admin/auth/user/add/',
         as_user=ADMIN,

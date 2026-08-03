@@ -60,6 +60,18 @@ See [How access works](help:access-model) for suggested roles and for the
 non-obvious permissions — the two ticker permissions and technical documentation
 access.
 
+## Checking who is in which team
+
+The **Users** list has a **Teams** column showing every team an account belongs
+to. To narrow the list to one team, open **Filters** and use **By team**.
+
+![The users list](screenshot:users-list)
+
+The filter's **No team** option is the one to reach for: it finds the accounts
+that can see nothing at all. A user lands there between being created and being
+given a team, and again if their last membership is removed — they can still
+sign in, they just arrive at an empty interface.
+
 ## Changing someone's password
 
 Only relevant for password accounts. Open the user, and use the password change

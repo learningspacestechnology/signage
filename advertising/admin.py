@@ -12,6 +12,7 @@ from django.http import HttpResponseBadRequest, HttpResponseRedirect
 from django.urls import path, reverse
 from django.utils import timezone
 from unfold.admin import ModelAdmin
+from unfold.decorators import display
 from unfold.forms import AdminPasswordChangeForm, UserChangeForm
 from unfold.widgets import UnfoldAdminSelectWidget, UnfoldAdminTextInputWidget
 
@@ -314,12 +315,37 @@ class PermissionAdmin(ModelAdmin):
         return False
 
 
+class TeamListFilter(admin.RelatedFieldListFilter):
+    """Team filter for the Users list, with the "no team" option spelled out.
+
+    The stock label for that option is the changelist's empty value ("-"), and
+    it is the case most worth finding: a staff user with no team sees nothing at
+    all until one is assigned.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.title = "team"
+        self.empty_value_display = "No team"
+
+
 @admin.register(User)
 class UserAdmin(BaseUserAdmin, ModelAdmin):
     form = UserChangeForm
     add_form = PreprovisionUserCreationForm
     change_password_form = AdminPasswordChangeForm
     autocomplete_fields = ("groups", "user_permissions")
+    list_display = (
+        "username",
+        "email",
+        "first_name",
+        "last_name",
+        "show_teams",
+        "is_staff",
+    )
+    # `teams` is the reverse side of Team.members, so the filter also offers the
+    # "no team" case (see TeamListFilter).
+    list_filter = BaseUserAdmin.list_filter + (("teams", TeamListFilter),)
     add_fieldsets = (
         (
             None,
@@ -342,6 +368,17 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
             },
         ),
     )
+
+    def get_queryset(self, request):
+        # show_teams walks every row's teams; without this the changelist runs a
+        # query per user.
+        return super().get_queryset(request).prefetch_related("teams")
+
+    @display(description="Teams")
+    def show_teams(self, obj):
+        # Iterating the prefetched manager, not values_list, so the prefetch above
+        # is actually used.
+        return ", ".join(team.name for team in obj.teams.all()) or "—"
 
     def get_fieldsets(self, request, obj=None):
         fieldsets = super().get_fieldsets(request, obj)
