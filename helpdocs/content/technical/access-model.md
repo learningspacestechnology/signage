@@ -56,13 +56,21 @@ Reasonable starting roles:
 | **Scheduler** | The above, plus add/change/view schedules and screens |
 | **Technical** | The above, plus room schedules, and technical documentation access |
 
-### Two permissions worth knowing about
+### Three permissions worth knowing about
+
+The ticker tape is split across two of them, so the shape of the display and the
+message on it can be delegated separately.
+
+**`screens.change_ticker_settings`** — lets a user turn the ticker on and choose
+its layout, deciding whether the bar overlays the content or the content shrinks
+to make room.
 
 **`screens.change_ticker_text`** — lets a user write and style the scrolling
-message on a screen without being a superuser. Turning the ticker on and choosing
-its layout stays superuser-only, so the shape of the display is controlled while
-the message itself can be delegated. A user with neither sees no ticker fields at
-all.
+message, without any say over whether the ticker is on.
+
+Neither is granted by `screens.change_screen`. A user holding neither sees no
+ticker fields on the screen form and no ticker documentation, so the feature is
+invisible until someone grants it deliberately.
 
 **`helpdocs.view_technical_docs`** — grants access to this documentation set.
 Superusers have it implicitly. Grant it via a group to anyone doing the work

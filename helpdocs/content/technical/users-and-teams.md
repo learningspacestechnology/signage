@@ -53,8 +53,8 @@ Assign permissions through **Groups**, not to individuals.
 2. Choose its permissions.
 3. Open the user and add them to the group.
 
-See [How access works](help:access-model) for suggested roles and for the two
-non-obvious permissions — the ticker text permission and technical documentation
+See [How access works](help:access-model) for suggested roles and for the
+non-obvious permissions — the two ticker permissions and technical documentation
 access.
 
 ## Changing someone's password

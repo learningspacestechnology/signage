@@ -293,6 +293,8 @@ TICKER_TEXT_FIELDS = (
     'ticker_background_color', 'ticker_background_opacity',
     'ticker_scroll_speed_px_sec',
 )
+TICKER_GATE_PERM = 'screens.change_ticker_settings'
+TICKER_TEXT_PERM = 'screens.change_ticker_text'
 
 
 @admin.register(Screen)
@@ -314,11 +316,17 @@ class ScreenAdmin(TeamScopedAdminMixin, ModelAdmin):
     )
 
     def _hidden_ticker_fields(self, request):
+        """Ticker fields a user may not see, by tier.
+
+        Both tiers are grantable permissions, so a plain screen editor sees no
+        ticker fields at all and the fieldset disappears. ``has_perm`` is True
+        for superusers, so they need no special case here.
+        """
         hidden = set()
-        if not request.user.is_superuser:
+        if not request.user.has_perm(TICKER_GATE_PERM):
             hidden.update(TICKER_GATE_FIELDS)
-            if not request.user.has_perm('screens.change_ticker_text'):
-                hidden.update(TICKER_TEXT_FIELDS)
+        if not request.user.has_perm(TICKER_TEXT_PERM):
+            hidden.update(TICKER_TEXT_FIELDS)
         return hidden
 
     def get_exclude(self, request, obj=None):

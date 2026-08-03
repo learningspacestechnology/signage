@@ -307,6 +307,71 @@ class SectionPermissionTests(TestCase):
         self.assertEqual(rendering.permissions_referenced('# T\n\nplain'), [])
 
 
+class TickerDocumentationTests(TestCase):
+    """The ticker tape is invisible to a reader who cannot use it.
+
+    Being able to view or change screens is not enough — the page and every
+    mention of the feature are gated on the two ticker permissions.
+    """
+
+    def setUp(self):
+        self.user = _staff_user('screen_editor')
+        self.page = registry.get_page(registry.USERS, 'ticker-tape')
+        self.screens_page = registry.get_page(registry.USERS, 'screens')
+
+    def test_page_is_forbidden_for_a_plain_screen_editor(self):
+        user = _grant(self.user, 'screens.view_screen', 'screens.change_screen')
+        self.assertEqual(_client_for(user).get(self.page.url).status_code, 403)
+
+    def test_page_is_absent_from_the_index_for_a_plain_screen_editor(self):
+        user = _grant(self.user, 'screens.view_screen')
+        response = _client_for(user).get(reverse('admin:help_index'))
+        self.assertNotContains(response, self.page.url)
+
+    def test_either_ticker_permission_opens_the_page(self):
+        for username, permission in (
+            ('writer', 'screens.change_ticker_text'),
+            ('configurer', 'screens.change_ticker_settings'),
+        ):
+            with self.subTest(permission=permission):
+                user = _grant(
+                    _staff_user(username), 'screens.view_screen', permission,
+                )
+                client = _client_for(user)
+                self.assertEqual(client.get(self.page.url).status_code, 200)
+                index = client.get(reverse('admin:help_index'))
+                self.assertContains(index, self.page.url)
+
+    def test_each_tier_sees_only_its_own_instructions(self):
+        writer = _grant(
+            _staff_user('writer2'),
+            'screens.view_screen', 'screens.change_ticker_text',
+        )
+        configurer = _grant(
+            _staff_user('configurer2'),
+            'screens.view_screen', 'screens.change_ticker_settings',
+        )
+
+        written = _client_for(writer).get(self.page.url)
+        self.assertContains(written, 'Writing the message')
+        self.assertNotContains(written, 'Turning it on')
+
+        configured = _client_for(configurer).get(self.page.url)
+        self.assertContains(configured, 'Turning it on')
+        self.assertNotContains(configured, 'Writing the message')
+
+    def test_screens_page_hides_the_pointer_without_a_ticker_permission(self):
+        user = _grant(self.user, 'screens.view_screen')
+        response = _client_for(user).get(self.screens_page.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'Adding a message bar')
+
+        user = _grant(user, 'screens.change_ticker_text')
+        self.assertContains(
+            _client_for(user).get(self.screens_page.url), 'Adding a message bar',
+        )
+
+
 class ConfigSubstitutionTests(TestCase):
     """Pages must read configurable values live, not bake them in."""
 

@@ -53,7 +53,7 @@ class Screen(models.Model):
     last_seen = models.DateTimeField(auto_now_add=True, blank=True)
     teams = models.ManyToManyField("screens.Team", related_name="screens")
 
-    # Superuser-only ticker gates
+    # Editable by anyone with the change_ticker_settings permission
     ticker_enabled = models.BooleanField(default=False)
     ticker_layout = models.CharField(max_length=10, choices=TICKER_LAYOUT_CHOICES, default=TICKER_LAYOUT_OVERLAY,
                                      help_text="Overlay draws the ticker on top of the content. "
@@ -87,7 +87,10 @@ class Screen(models.Model):
     )
 
     class Meta:
-        permissions = [("change_ticker_text", "Can change ticker text and style on screens")]
+        permissions = [
+            ("change_ticker_text", "Can change ticker text and style on screens"),
+            ("change_ticker_settings", "Can turn the ticker on and choose its layout on screens"),
+        ]
 
     def clean(self):
         super().clean()

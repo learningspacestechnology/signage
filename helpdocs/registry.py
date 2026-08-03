@@ -160,7 +160,10 @@ PAGES = (
     Page(
         audience=USERS, slug='ticker-tape', section='Scheduling & screens',
         summary='Putting a scrolling message along the bottom of a screen.',
-        permissions=('screens.view_screen',),
+        # Either ticker tier is enough to read this. A plain screen editor holds
+        # neither, sees no ticker fields on the form, and so is not shown a page
+        # describing a feature they cannot reach.
+        permissions=('screens.change_ticker_text', 'screens.change_ticker_settings'),
     ),
     Page(
         audience=USERS, slug='dashboard', section='Day to day',

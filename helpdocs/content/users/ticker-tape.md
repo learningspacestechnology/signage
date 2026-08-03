@@ -13,12 +13,13 @@ Open the screen under **Screens** and expand the **Ticker tape** section.
 
 ![The ticker tape settings on a screen](screenshot:ticker-fieldset)
 
-!!! note "You may see fewer settings than are described here"
-    Which fields you see depends on your permissions. Turning the ticker on and
-    choosing its layout is restricted to administrators; writing the message and
-    styling it is available to anyone granted that permission. If you see no
-    ticker settings at all, ask an administrator for access.
+!!! note "You may see fewer settings than the picture shows"
+    The ticker is split across two permissions and the picture shows both. One
+    covers turning the ticker on and choosing its layout — the shape of the
+    display. The other covers the message itself and how it looks. You may hold
+    either or both, so parts of this page may describe fields you cannot see.
 
+{% if perms.screens.change_ticker_settings %}
 ## Turning it on
 
 1. Tick **Ticker enabled**.
@@ -27,11 +28,19 @@ Open the screen under **Screens** and expand the **Ticker tape** section.
       bottom strip. Nothing is resized, but the bottom of your content is hidden.
     - **Shrink** — the content is scaled down slightly to make room, so nothing
       is covered.
-3. Enter the **Ticker text**.
-4. Save.
+3. Save.
+
+Enabling the ticker is only half of it — a screen with the ticker on but no
+message shows nothing at all.
+{% endif %}
+
+{% if perms.screens.change_ticker_text %}
+## Writing the message
+
+Enter the **Ticker text** and save.
 
 An empty message means no ticker is shown, even with the ticker enabled. To
-switch it off temporarily, clearing the text is enough.
+switch a message off temporarily, clearing the text is enough.
 
 ## Choosing a look
 
@@ -62,14 +71,19 @@ Leave any override blank to keep the preset's value for that one thing.
   start of the message, not the end.
 - **Check the speed.** Fast enough to come round often, slow enough to read.
   Preview it before leaving.
+{% endif %}
 
 ## Checking it
 
 Use **Preview** on the screen form, or **View on site**, to see the ticker
-running over the real content. Adjust the speed and size there rather than
-guessing.
+running over the real content. Judge it there rather than guessing.
 
 ## Turning it off
 
-Clear the **Ticker text**, or untick **Ticker enabled** if you have that option.
-Either stops the ticker; clearing the text keeps your styling for next time.
+{% if perms.screens.change_ticker_text %}
+Clear the **Ticker text**. That stops the ticker while keeping your styling for
+next time.
+{% endif %}
+{% if perms.screens.change_ticker_settings %}
+Untick **Ticker enabled** to switch the feature off on that screen entirely.
+{% endif %}

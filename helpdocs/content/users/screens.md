@@ -68,10 +68,12 @@ On the **Screens** list you can search by **name or IP address**, and filter by
 **schedule** — useful for checking which displays are affected before you change
 a schedule.
 
+{% if perms.screens.change_ticker_text or perms.screens.change_ticker_settings %}
 ## Adding a message bar
 
 Screens can show a scrolling message along the bottom, over or beside the normal
 content. See [Adding a scrolling message](help:ticker-tape).
+{% endif %}
 
 {% if perms.screens.delete_screen %}
 ## Deleting a screen
