@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/2.2/ref/settings/
 """
 
 import os
+from django.templatetags.static import static
 from django.urls import reverse_lazy
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
@@ -101,6 +102,9 @@ UNFOLD = {
     "SITE_URL": "/",
     "SHOW_HISTORY": True,
     "SHOW_VIEW_ON_SITE": True,
+    # Loaded on every admin page. Lambda because static() needs the app registry,
+    # which isn't ready while this module is being imported.
+    "STYLES": [lambda request: static("screens/css/admin_table_links.css")],
     "SIDEBAR": {
         "show_search": True,
         "show_all_applications": False,

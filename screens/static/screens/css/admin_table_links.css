@@ -1,0 +1,39 @@
+/*
+ * Changelist tables: make the link to a record read as a link.
+ *
+ * Unfold gives that link the same colour as the surrounding text (LINK_CLASSES
+ * in unfold.templatetags.unfold_list), so on a dense table nothing marks a row
+ * as clickable except the cursor. Loaded on every admin page through
+ * UNFOLD["STYLES"], so every app's changelist matches. This only changes how
+ * the link looks — which column carries it is each ModelAdmin's business.
+ *
+ * The two selectors are the same link seen two ways: Unfold's own classes, and
+ * the `th` the first linked column is rendered as. Either alone would miss a
+ * case, and matching both costs nothing.
+ *
+ * Deliberately narrower than "every anchor in a table": the badge links in the
+ * room changelists (Grid / Foyer / Screen) carry their own colours and stay as
+ * they are, and `tbody` keeps the sortable column headers out of it.
+ */
+#result_list tbody a.text-font-important-light,
+#result_list tbody th > a {
+    color: var(--color-primary-600);
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+#result_list tbody a.text-font-important-light:hover,
+#result_list tbody th > a:hover {
+    color: var(--color-primary-700);
+}
+
+html.dark #result_list tbody a.text-font-important-light,
+html.dark #result_list tbody th > a {
+    color: var(--color-primary-400);
+}
+
+html.dark #result_list tbody a.text-font-important-light:hover,
+html.dark #result_list tbody th > a:hover {
+    color: var(--color-primary-300);
+}

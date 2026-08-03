@@ -88,8 +88,9 @@ playlists it's in.
 
 ## Editing and previewing
 
-Click any item to open it. The form shows a **Preview** so you can confirm you're
-editing what you think you are.
+Click an item's **name** — the underlined text in the Name column — to open it.
+The form shows a **Preview** so you can confirm you're editing what you think you
+are.
 
 Changing the file, the type, the web address or the timing dates causes every
 playlist containing that item to refresh, so screens pick the change up within

@@ -228,6 +228,9 @@ class PlaylistListFilter(admin.SimpleListFilter):
 class SourceDisplay(HideChangeFormDeleteMixin, TeamScopedAdminMixin, ModelAdmin):
     readonly_fields = ('image_preview',)
     list_display = ('thumbnail', 'name', 'show_type', 'resolution', 'created_by', 'playlist_names', 'show_teams', 'created_at', 'valid_from', 'expires_at')
+    # Without this the link to the change form lands on the first column — the
+    # thumbnail — which reads as decoration, not as the way in. Link the name.
+    list_display_links = ('name',)
     list_filter = (PlaylistListFilter, 'type')
     search_fields = ('name',)
     date_hierarchy = 'created_at'
