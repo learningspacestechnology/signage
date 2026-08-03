@@ -26,6 +26,10 @@ COVERAGE_EXEMPT = {
     # Internal celery bookkeeping, covered in passing by the Task Results
     # section of the Periodic Tasks page.
     'django_celery_results_groupresult_changelist',
+    # Registered read-only and hidden from the index; it exists only so the
+    # Group/User forms can autocomplete permissions. Permissions themselves are
+    # documented on the Users and teams / How access works pages.
+    'auth_permission_changelist',
 }
 
 

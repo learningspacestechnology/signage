@@ -6,7 +6,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.admin import GroupAdmin as BaseGroupAdmin
 from django.contrib.auth.decorators import user_passes_test
-from django.contrib.auth.models import User, Group
+from django.contrib.auth.models import User, Group, Permission
 from django.db.models import Count
 from django.http import HttpResponseBadRequest, HttpResponseRedirect
 from django.urls import path, reverse
@@ -276,11 +276,50 @@ admin.site.unregister(ClockedSchedule)
 admin.site.unregister(TaskResult)
 
 
+@admin.register(Permission)
+class PermissionAdmin(ModelAdmin):
+    """Registered only so `autocomplete_fields` can search permissions.
+
+    With ~140 permissions the stock `filter_horizontal` picker is a wall of
+    scrolling; autocomplete needs the related model to have a registered admin
+    with `search_fields`. This admin is read-only and deliberately kept out of
+    the sidebar (the UNFOLD nav is an explicit list, so it never appears).
+    """
+
+    search_fields = (
+        "name",
+        "codename",
+        "content_type__app_label",
+        "content_type__model",
+    )
+    def has_view_permission(self, request, obj=None):
+        # Django gates the autocomplete endpoint on this, so mirror "may edit
+        # groups or users" rather than requiring a separate auth.view_permission
+        # grant on every group-editing user.
+        return request.user.has_perm("auth.change_group") or request.user.has_perm(
+            "auth.change_user"
+        )
+
+    def has_module_permission(self, request):
+        # Keep it off the admin index; it exists purely to back autocomplete.
+        return False
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
 @admin.register(User)
 class UserAdmin(BaseUserAdmin, ModelAdmin):
     form = UserChangeForm
     add_form = PreprovisionUserCreationForm
     change_password_form = AdminPasswordChangeForm
+    autocomplete_fields = ("groups", "user_permissions")
     add_fieldsets = (
         (
             None,
@@ -333,7 +372,7 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
 
 @admin.register(Group)
 class GroupAdmin(BaseGroupAdmin, ModelAdmin):
-    pass
+    autocomplete_fields = ("permissions",)
 
 
 class UnfoldTaskSelectWidget(UnfoldAdminSelectWidget, TaskSelectWidget):

@@ -50,7 +50,10 @@ create anything.
 Assign permissions through **Groups**, not to individuals.
 
 1. Go to **Groups** and create one per role, if you haven't already.
-2. Choose its permissions.
+2. Choose its permissions. The **Permissions** box is a search field, not a
+   list to scroll: click it and type part of what you're after — a model name
+   like `playlist`, or an action like `Can change` — and pick from the matches.
+   Each choice becomes a tag you can remove with its ×.
 3. Open the user and add them to the group.
 
 See [How access works](help:access-model) for suggested roles and for the
