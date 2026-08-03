@@ -38,9 +38,9 @@ another playlist brings that content along too.
 
 ## Reading the Playlist Tree
 
-**Playlist Tree** in the sidebar draws the relationships between all your
-playlists as a diagram. It's the fastest way to answer "what will actually be on
-this screen?"
+**Playlist Tree** in the sidebar draws the relationships between your playlists
+as a diagram. It's the fastest way to answer "what will actually be on this
+screen?"
 
 ![The playlist inheritance tree](screenshot:playlist-tree)
 
@@ -49,6 +49,18 @@ this screen?"
 - **Hover** a circle for the playlist's name, description and how much content it
   holds.
 - **Click** a circle to open that playlist for editing.
+
+### What the tree shows
+
+The tree covers the playlists of the [team you're currently working in](help:teams),
+plus everything joined to them by inheritance — both the playlists yours inherit
+from and the playlists that inherit from yours. Either chain may run into another
+team's playlist, so you can trace where your content comes from and where it ends
+up.
+
+Playlists with no inheritance link to your team's own are never drawn, even if
+they exist. Switch teams with the picker at the top right to see a different
+team's tree.
 
 ## Two rules you'll run into
 

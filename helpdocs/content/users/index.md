@@ -3,9 +3,6 @@
 Everything you need to run digital signage in {{ config.ADMIN_SITE_NAME }} —
 putting content on screens and deciding when it plays.
 
-Displays that show **room bookings** aren't covered here. They work in a
-completely different way and are looked after by technical staff.
-
 New here? Read **Getting started**, then **How it all fits together**. Those two
 pages take about ten minutes and will save you a lot of guesswork. After that,
 dip into whichever page matches the job in front of you.
