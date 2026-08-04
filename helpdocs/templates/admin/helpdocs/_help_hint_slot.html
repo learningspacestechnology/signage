@@ -1,0 +1,10 @@
+{% comment %}
+Injected by attach_help_links() via Unfold's list_before_template /
+change_form_before_template slots. Renders nothing when the current admin view
+has no mapped help page, or the reader can't access that page's audience.
+
+This uses a comment *tag* rather than the brace-hash comment syntax on purpose:
+that syntax cannot span multiple lines, and a multi-line one is emitted as
+literal text on every admin page that includes this partial.
+{% endcomment %}
+{% load help_links %}{% help_hint %}

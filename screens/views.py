@@ -5,7 +5,7 @@ from django.shortcuts import render, get_object_or_404
 from django.urls import resolve, reverse, Resolver404
 from urllib.parse import urlparse
 from screens import models
-from screens.team_scope import scope_to_user_teams
+from screens.team_scope import scope_to_active_team, scope_to_user_teams
 from screens.utils import get_client_ip, get_client_hostname
 from datetime import datetime
 from advertising.settings import AUTO_MAKE_SCREENS_FOR_NEW_IPS, UNCONFIGURED_SCREEN_MESSAGE
@@ -185,10 +185,22 @@ def render_playlist_json(playlist, screen_interspersed=None, screen_id=None):
 
 @staff_member_required
 def view_playlist_tree_json(request):
-    accessible_ids = set(
-        scope_to_user_teams(models.Playlist.objects.all(), request)
-        .values_list("id", flat=True)
-    )
+    """The inheritance graph, scoped to what the viewer's active team may see.
+
+    Visible = the active team's own playlists, plus everything connected to them
+    by inheritance: the chain they inherit content *from*, and the chain that
+    inherits *from* them. Both directions may cross into another team — you need
+    to see where your content comes from and where it ends up. Playlists with no
+    inheritance path to the active team's own never appear.
+    """
+    base = models.Playlist.objects.all()
+    # ActiveTeamMiddleware resolves active_team for this endpoint; the fallback
+    # keeps a missing one narrow rather than widening to every playlist.
+    if getattr(request, "active_team", None) is not None:
+        accessible = scope_to_active_team(base, request)
+    else:
+        accessible = scope_to_user_teams(base, request)
+    accessible_ids = set(accessible.values_list("id", flat=True))
 
     visible_ids = set(accessible_ids)
 

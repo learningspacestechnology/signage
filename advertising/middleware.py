@@ -33,6 +33,13 @@ _ACTIVE_TEAM_BYPASS_PREFIXES = (
     '/admin/oauth/',  # Entra ID login + callback run before the user is staff
 )
 
+# Endpoints outside /admin/ that still need `request.active_team` resolved
+# because they back an admin page. The playlist tree page lives at
+# /admin/screens/playlist/tree/ but fetches its data from /api/playlist_tree,
+# which would otherwise see no active team and fall back to showing every
+# team's playlists.
+_ACTIVE_TEAM_EXTRA_PATHS = ('/api/playlist_tree',)
+
 # Endpoints whose views handle unregistered IPs themselves — either by
 # auto-creating a Screen (when AUTO_MAKE_SCREENS_FOR_NEW_IPS=True) or by
 # rendering the "unconfigured screen" page/JSON. These must always be
@@ -123,7 +130,8 @@ class ActiveTeamMiddleware:
     def __call__(self, request):
         request.active_team = None
 
-        if not request.path.startswith('/admin/'):
+        if not (request.path.startswith('/admin/')
+                or request.path in _ACTIVE_TEAM_EXTRA_PATHS):
             return self.get_response(request)
         if any(request.path.startswith(p) for p in _ACTIVE_TEAM_BYPASS_PREFIXES):
             return self.get_response(request)

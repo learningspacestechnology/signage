@@ -127,3 +127,5 @@ dmypy.json
 media/*
 advertising/settings.py
 *.pdf
+# Throwaway database + media for `manage.py capture_help_screenshots`.
+.help-capture/

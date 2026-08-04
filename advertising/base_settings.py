@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/2.2/ref/settings/
 """
 
 import os
+from django.templatetags.static import static
 from django.urls import reverse_lazy
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
@@ -42,6 +43,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'screens',
     'room_schedules',
+    'helpdocs',
     'django_celery_beat',
     'django_celery_results',
     'recurrence',
@@ -100,6 +102,9 @@ UNFOLD = {
     "SITE_URL": "/",
     "SHOW_HISTORY": True,
     "SHOW_VIEW_ON_SITE": True,
+    # Loaded on every admin page. Lambda because static() needs the app registry,
+    # which isn't ready while this module is being imported.
+    "STYLES": [lambda request: static("screens/css/admin_table_links.css")],
     "SIDEBAR": {
         "show_search": True,
         "show_all_applications": False,
@@ -219,6 +224,31 @@ UNFOLD = {
                         "icon": "groups",
                         "link": reverse_lazy("admin:screens_team_changelist"),
                         "permission": lambda request: request.user.is_superuser,
+                    },
+                ],
+            },
+            {
+                "title": "Help",
+                "separator": True,
+                "collapsible": False,
+                "items": [
+                    {
+                        "title": "Help & Tutorials",
+                        "icon": "help",
+                        "link": reverse_lazy("admin:help_index"),
+                        "active": lambda request: request.path.startswith("/admin/help/users"),
+                        "permission": lambda request: request.user.is_authenticated,
+                    },
+                    {
+                        "title": "Technical Docs",
+                        "icon": "menu_book",
+                        "link": reverse_lazy(
+                            "admin:help_section", kwargs={"audience": "technical"}
+                        ),
+                        "active": lambda request: request.path.startswith("/admin/help/technical"),
+                        "permission": lambda request: request.user.has_perm(
+                            "helpdocs.view_technical_docs"
+                        ),
                     },
                 ],
             },

@@ -97,6 +97,27 @@
                 </div>
             </div>
 
+            {# ---- Getting started -------------------------------------- #}
+            <div class="bg-white flex flex-col p-6 rounded-default shadow-xs border border-base-200 dark:bg-base-900 dark:border-base-800">
+                <div class="flex flex-wrap items-center gap-3 mb-4">
+                    <h2 class="font-semibold text-[15px] text-important">{% translate "Getting started" %}</h2>
+                    <a href="{{ help_index_url }}" class="text-primary-600 text-sm font-medium hover:underline ml-auto">
+                        {% translate "All help pages" %}
+                    </a>
+                </div>
+                <ol class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                    {% for step in help_steps %}
+                        <li>
+                            <a href="{{ step.url }}"
+                               class="group flex items-center gap-3 h-full px-3 py-2.5 rounded-default border border-base-200 hover:bg-base-100/80 dark:border-base-800 dark:hover:bg-base-800/50">
+                                <span class="material-symbols-outlined text-base-400 text-xl group-hover:text-primary-600">{{ step.icon }}</span>
+                                <span class="text-important text-sm font-medium group-hover:underline">{{ forloop.counter }}. {{ step.label }}</span>
+                            </a>
+                        </li>
+                    {% endfor %}
+                </ol>
+            </div>
+
             {# ---- Offline screens watchlist ----------------------------- #}
             <div class="bg-white flex flex-col p-6 rounded-default shadow-xs border border-base-200 dark:bg-base-900 dark:border-base-800">
                 <h2 class="font-semibold text-[15px] text-important mb-4">{% translate "Offline screens" %}</h2>

@@ -29,6 +29,21 @@ class TeamScopedAdminMixin:
     def get_queryset(self, request):
         return scope_to_active_team(super().get_queryset(request), request)
 
+    def delete_queryset(self, request, queryset):
+        """Re-resolve by primary key before deleting.
+
+        ``scope_to_active_team`` returns a ``.distinct()`` queryset on both of its
+        branches, and Django refuses ``.delete()`` on one (``TypeError``). That
+        only bites the changelist's ``delete_selected`` action, which is the sole
+        path calling ``queryset.delete()`` — single-object deletes go through
+        ``obj.delete()`` and were never affected. Materialising the pks keeps the
+        distinct flag out of the delete query entirely.
+        """
+        pks = list(queryset.values_list('pk', flat=True))
+        super().delete_queryset(
+            request, self.model._default_manager.filter(pk__in=pks),
+        )
+
     def get_exclude(self, request, obj=None):
         excluded = list(super().get_exclude(request, obj) or [])
         if not request.user.is_superuser and 'teams' not in excluded:
@@ -228,6 +243,9 @@ class PlaylistListFilter(admin.SimpleListFilter):
 class SourceDisplay(HideChangeFormDeleteMixin, TeamScopedAdminMixin, ModelAdmin):
     readonly_fields = ('image_preview',)
     list_display = ('thumbnail', 'name', 'show_type', 'resolution', 'created_by', 'playlist_names', 'show_teams', 'created_at', 'valid_from', 'expires_at')
+    # Without this the link to the change form lands on the first column — the
+    # thumbnail — which reads as decoration, not as the way in. Link the name.
+    list_display_links = ('name',)
     list_filter = (PlaylistListFilter, 'type')
     search_fields = ('name',)
     date_hierarchy = 'created_at'
@@ -293,6 +311,8 @@ TICKER_TEXT_FIELDS = (
     'ticker_background_color', 'ticker_background_opacity',
     'ticker_scroll_speed_px_sec',
 )
+TICKER_GATE_PERM = 'screens.change_ticker_settings'
+TICKER_TEXT_PERM = 'screens.change_ticker_text'
 
 
 @admin.register(Screen)
@@ -314,11 +334,17 @@ class ScreenAdmin(TeamScopedAdminMixin, ModelAdmin):
     )
 
     def _hidden_ticker_fields(self, request):
+        """Ticker fields a user may not see, by tier.
+
+        Both tiers are grantable permissions, so a plain screen editor sees no
+        ticker fields at all and the fieldset disappears. ``has_perm`` is True
+        for superusers, so they need no special case here.
+        """
         hidden = set()
-        if not request.user.is_superuser:
+        if not request.user.has_perm(TICKER_GATE_PERM):
             hidden.update(TICKER_GATE_FIELDS)
-            if not request.user.has_perm('screens.change_ticker_text'):
-                hidden.update(TICKER_TEXT_FIELDS)
+        if not request.user.has_perm(TICKER_TEXT_PERM):
+            hidden.update(TICKER_TEXT_FIELDS)
         return hidden
 
     def get_exclude(self, request, obj=None):

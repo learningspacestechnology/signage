@@ -287,6 +287,8 @@ class TeamScopingTests(TestCase):
         self.assertEqual(data[str(self.list_b.pk)]['children'], [self.list_a.pk])
 
     def test_playlist_tree_includes_descendants_of_accessible(self):
+        # Another team inheriting *from* one of ours stays on our tree: we need
+        # to see where our content ends up.
         list_d = Playlist.objects.create(name="listD")
         list_d.teams.add(self.team_b)
         PlaylistRelation.objects.create(super_list=self.list_a, inheriting_list=list_d)
@@ -295,6 +297,31 @@ class TeamScopingTests(TestCase):
         self.assertIn(str(self.list_a.pk), data)
         self.assertIn(str(list_d.pk), data)
         self.assertEqual(data[str(self.list_a.pk)]['children'], [list_d.pk])
+
+    def test_playlist_tree_excludes_unrelated_other_team_playlist(self):
+        # listB is team_b's and has no inheritance link to anything of team_a's
+        data = self._fetch_tree(self.user_a)
+        self.assertNotIn(str(self.list_b.pk), data)
+
+    def test_playlist_tree_scoped_to_active_team_for_superuser(self):
+        # A superuser browsing as one team sees that team's tree, not everything
+        c = Client()
+        c.force_login(self.super)
+        c.get(f'/admin/set-active-team/{self.team_a.pk}/')
+        resp = c.get('/api/playlist_tree')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertIn(str(self.list_a.pk), data)
+        self.assertNotIn(str(self.list_b.pk), data)
+
+    def test_playlist_tree_scoped_to_active_team_for_multi_team_user(self):
+        # eve is in both teams; only the active team's playlists appear
+        c = Client()
+        c.force_login(self.user_ab)
+        c.get(f'/admin/set-active-team/{self.team_b.pk}/')
+        data = c.get('/api/playlist_tree').json()
+        self.assertIn(str(self.list_b.pk), data)
+        self.assertNotIn(str(self.list_a.pk), data)
 
     def test_playlist_tree_excludes_siblings_via_shared_ancestor(self):
         sibling = Playlist.objects.create(name="siblingInA")
@@ -331,3 +358,55 @@ class TeamScopingTests(TestCase):
         self.assertIn(str(self.list_a.pk), data)
         self.assertIn(str(self.list_b.pk), data)
         self.assertIn(str(list_c.pk), data)
+
+    # --- Bulk delete via the changelist action -------------------------------
+    #
+    # scope_to_active_team returns a .distinct() queryset on both branches, and
+    # Django refuses .delete() on one. The single-object delete path goes through
+    # obj.delete() and never noticed; delete_selected calls queryset.delete() and
+    # returned a 500 for every scoped model and every user.
+
+    def _make_disposable(self, team):
+        """One throwaway object per team-scoped model, free of PROTECT references."""
+        source = Source.objects.create(type=Source.IFRAME, name="doomed-src", url="http://d")
+        playlist = Playlist.objects.create(name="doomed-list")
+        schedule = Schedule.objects.create(name="doomed-sched", default_playlist=self.list_a)
+        screen = Screen.objects.create(name="doomed-screen", ip="10.0.0.99")
+        for obj in (source, playlist, schedule, screen):
+            obj.teams.add(team)
+        return {'source': source, 'playlist': playlist, 'schedule': schedule, 'screen': screen}
+
+    def _bulk_delete(self, client, model_name, obj):
+        return client.post(f'/admin/screens/{model_name}/', {
+            'action': 'delete_selected',
+            '_selected_action': [str(obj.pk)],
+            'post': 'yes',
+        })
+
+    def _assert_bulk_delete_works(self, user, team):
+        c = Client()
+        c.force_login(user)
+        for model_name, obj in self._make_disposable(team).items():
+            with self.subTest(model=model_name, user=user.username):
+                resp = self._bulk_delete(c, model_name, obj)
+                self.assertEqual(resp.status_code, 302)
+                self.assertFalse(
+                    type(obj).objects.filter(pk=obj.pk).exists(),
+                    f"{model_name} survived the bulk delete",
+                )
+
+    def test_bulk_delete_works_for_scoped_user(self):
+        # takes the filter(teams=active).distinct() branch
+        self._assert_bulk_delete_works(self.user_a, self.team_a)
+
+    def test_bulk_delete_works_for_superuser(self):
+        # takes the ALL_TEAMS branch, which also calls .distinct()
+        self._assert_bulk_delete_works(self.super, self.team_a)
+
+    def test_bulk_delete_leaves_other_teams_objects_alone(self):
+        c = Client()
+        c.force_login(self.user_a)
+        doomed = self._make_disposable(self.team_a)
+        self._bulk_delete(c, 'source', doomed['source'])
+        self.assertTrue(Source.objects.filter(pk=self.src_b.pk).exists())
+        self.assertTrue(Source.objects.filter(pk=self.src_shared.pk).exists())

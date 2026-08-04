@@ -1,0 +1,10 @@
+{% load i18n %}
+{% if page %}
+    <div class="flex flex-wrap items-center gap-3 mb-4 px-4 py-3 rounded-default border border-base-200 bg-base-50 dark:border-base-800 dark:bg-base-900">
+        <span class="material-symbols-outlined text-primary-600 text-xl">help</span>
+        <span class="text-base-500 text-sm min-w-0">{{ summary }}</span>
+        <a href="{{ url }}" class="text-primary-600 text-sm font-medium hover:underline ml-auto whitespace-nowrap">
+            {% blocktranslate with title=title %}Read: {{ title }}{% endblocktranslate %}
+        </a>
+    </div>
+{% endif %}

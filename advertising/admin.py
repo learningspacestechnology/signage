@@ -6,12 +6,13 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.admin import GroupAdmin as BaseGroupAdmin
 from django.contrib.auth.decorators import user_passes_test
-from django.contrib.auth.models import User, Group
+from django.contrib.auth.models import User, Group, Permission
 from django.db.models import Count
 from django.http import HttpResponseBadRequest, HttpResponseRedirect
 from django.urls import path, reverse
 from django.utils import timezone
 from unfold.admin import ModelAdmin
+from unfold.decorators import display
 from unfold.forms import AdminPasswordChangeForm, UserChangeForm
 from unfold.widgets import UnfoldAdminSelectWidget, UnfoldAdminTextInputWidget
 
@@ -22,6 +23,8 @@ from advertising.middleware import (
     ALL_TEAMS_SESSION_VALUE,
     SESSION_KEY as ACTIVE_TEAM_SESSION_KEY,
 )
+from helpdocs.admin_links import attach_help_links
+from helpdocs.urls import get_help_admin_urls
 from room_schedules.admin import get_o365_admin_urls
 
 _original_admin_get_urls = admin.site.get_urls
@@ -61,14 +64,25 @@ def _patched_admin_get_urls():
             name='set_active_team',
         ),
     ]
-    return get_o365_admin_urls() + custom + _original_admin_get_urls()
+    return (
+        get_help_admin_urls()
+        + get_o365_admin_urls()
+        + custom
+        + _original_admin_get_urls()
+    )
 
 
 admin.site.get_urls = _patched_admin_get_urls
 
 
 def team_switcher_dropdown(request):
-    """Items for Unfold's SITE_DROPDOWN listing teams the user can switch to."""
+    """Teams the user can switch to, for the header's team picker.
+
+    Consumed by the `team_switcher_items` tag in
+    `screens/templatetags/team_switcher.py`, which the project's override of
+    `unfold/helpers/userlinks.html` renders. Not Unfold's `SITE_DROPDOWN` — that
+    setting is not configured.
+    """
     if not (request.user.is_authenticated and request.user.is_staff):
         return []
 
@@ -138,6 +152,32 @@ def _doughnut_data(labels, data, colors):
         "labels": labels,
         "datasets": [{"data": data, "backgroundColor": colors, "borderWidth": 0}],
     })
+
+
+def _getting_started_steps():
+    """First-run path for the dashboard's Getting started panel.
+
+    Slugs must exist in helpdocs.registry; check_help_docs verifies that.
+    """
+    steps = (
+        ("login", "Sign in and find your way around", "getting-started"),
+        ("groups", "Understand teams and what you can see", "teams"),
+        ("perm_media", "Upload your content", "content"),
+        ("queue_play_next", "Build a playlist", "playlists"),
+        ("calendar_today", "Decide when it plays", "schedules"),
+        ("monitor", "Point a screen at it", "screens"),
+    )
+    return [
+        {
+            "icon": icon,
+            "label": label,
+            "url": reverse(
+                "admin:help_page",
+                kwargs={"audience": "users", "slug": slug},
+            ),
+        }
+        for icon, label, slug in steps
+    ]
 
 
 def dashboard_callback(request, context):
@@ -217,6 +257,12 @@ def dashboard_callback(request, context):
         "bulk_upload_url": reverse("admin:screens_source_bulk_create"),
         "add_content_url": reverse("admin:screens_source_add"),
         "add_playlist_url": reverse("admin:screens_playlist_add"),
+
+        # Getting-started panel. The step links go straight to the help pages
+        # rather than the admin screens, because a first-time user needs the
+        # explanation before the form.
+        "help_index_url": reverse("admin:help_index"),
+        "help_steps": _getting_started_steps(),
     })
     return context
 
@@ -231,11 +277,75 @@ admin.site.unregister(ClockedSchedule)
 admin.site.unregister(TaskResult)
 
 
+@admin.register(Permission)
+class PermissionAdmin(ModelAdmin):
+    """Registered only so `autocomplete_fields` can search permissions.
+
+    With ~140 permissions the stock `filter_horizontal` picker is a wall of
+    scrolling; autocomplete needs the related model to have a registered admin
+    with `search_fields`. This admin is read-only and deliberately kept out of
+    the sidebar (the UNFOLD nav is an explicit list, so it never appears).
+    """
+
+    search_fields = (
+        "name",
+        "codename",
+        "content_type__app_label",
+        "content_type__model",
+    )
+    def has_view_permission(self, request, obj=None):
+        # Django gates the autocomplete endpoint on this, so mirror "may edit
+        # groups or users" rather than requiring a separate auth.view_permission
+        # grant on every group-editing user.
+        return request.user.has_perm("auth.change_group") or request.user.has_perm(
+            "auth.change_user"
+        )
+
+    def has_module_permission(self, request):
+        # Keep it off the admin index; it exists purely to back autocomplete.
+        return False
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+class TeamListFilter(admin.RelatedFieldListFilter):
+    """Team filter for the Users list, with the "no team" option spelled out.
+
+    The stock label for that option is the changelist's empty value ("-"), and
+    it is the case most worth finding: a staff user with no team sees nothing at
+    all until one is assigned.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.title = "team"
+        self.empty_value_display = "No team"
+
+
 @admin.register(User)
 class UserAdmin(BaseUserAdmin, ModelAdmin):
     form = UserChangeForm
     add_form = PreprovisionUserCreationForm
     change_password_form = AdminPasswordChangeForm
+    autocomplete_fields = ("groups", "user_permissions")
+    list_display = (
+        "username",
+        "email",
+        "first_name",
+        "last_name",
+        "show_teams",
+        "is_staff",
+    )
+    # `teams` is the reverse side of Team.members, so the filter also offers the
+    # "no team" case (see TeamListFilter).
+    list_filter = BaseUserAdmin.list_filter + (("teams", TeamListFilter),)
     add_fieldsets = (
         (
             None,
@@ -258,6 +368,17 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
             },
         ),
     )
+
+    def get_queryset(self, request):
+        # show_teams walks every row's teams; without this the changelist runs a
+        # query per user.
+        return super().get_queryset(request).prefetch_related("teams")
+
+    @display(description="Teams")
+    def show_teams(self, obj):
+        # Iterating the prefetched manager, not values_list, so the prefetch above
+        # is actually used.
+        return ", ".join(team.name for team in obj.teams.all()) or "—"
 
     def get_fieldsets(self, request, obj=None):
         fieldsets = super().get_fieldsets(request, obj)
@@ -288,7 +409,7 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
 
 @admin.register(Group)
 class GroupAdmin(BaseGroupAdmin, ModelAdmin):
-    pass
+    autocomplete_fields = ("permissions",)
 
 
 class UnfoldTaskSelectWidget(UnfoldAdminSelectWidget, TaskSelectWidget):
@@ -330,3 +451,10 @@ class ClockedScheduleAdmin(BaseClockedScheduleAdmin, ModelAdmin):
 @admin.register(TaskResult)
 class TaskResultAdmin(TaskResultAdmin, ModelAdmin):
     pass
+
+
+# Must be the last statement in this module: it walks admin.site's registry, and
+# every unregister/register above would otherwise drop the attachment. This module
+# is imported from advertising/urls.py, i.e. after admin autodiscover has loaded
+# screens.admin and room_schedules.admin, so the registry is complete by now.
+attach_help_links()

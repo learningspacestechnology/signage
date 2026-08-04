@@ -1,8 +1,11 @@
 {% extends "admin/base_site.html" %}
 {% load i18n %}
 {% load static %}
+{% load help_links %}
 
 {% block content %}
+{# Custom admin page, so it isn't covered by the ModelAdmin injection slots. #}
+{% help_hint %}
 <style>
   #playlist-graph-container {
     width: 100%;
