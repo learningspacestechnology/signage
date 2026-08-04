@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+`KNOWN_ISSUES.md` holds bugs that have been diagnosed but deliberately not fixed yet, each with its cause and intended fix. Check it before investigating odd behaviour, and remove an entry when it is fixed.
+
 ## Commands
 
 Dependencies are managed with **uv**, so all `manage.py` commands must be run through `uv run` (e.g. `uv run python manage.py ...`) to use the project's `.venv`. A bare `python manage.py` may target the wrong environment.

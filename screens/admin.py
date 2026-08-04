@@ -29,6 +29,21 @@ class TeamScopedAdminMixin:
     def get_queryset(self, request):
         return scope_to_active_team(super().get_queryset(request), request)
 
+    def delete_queryset(self, request, queryset):
+        """Re-resolve by primary key before deleting.
+
+        ``scope_to_active_team`` returns a ``.distinct()`` queryset on both of its
+        branches, and Django refuses ``.delete()`` on one (``TypeError``). That
+        only bites the changelist's ``delete_selected`` action, which is the sole
+        path calling ``queryset.delete()`` — single-object deletes go through
+        ``obj.delete()`` and were never affected. Materialising the pks keeps the
+        distinct flag out of the delete query entirely.
+        """
+        pks = list(queryset.values_list('pk', flat=True))
+        super().delete_queryset(
+            request, self.model._default_manager.filter(pk__in=pks),
+        )
+
     def get_exclude(self, request, obj=None):
         excluded = list(super().get_exclude(request, obj) or [])
         if not request.user.is_superuser and 'teams' not in excluded:
