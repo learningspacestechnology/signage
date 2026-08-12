@@ -3,6 +3,11 @@
 Things found but deliberately not fixed yet, each with enough detail to pick up cold.
 Remove an entry when it is fixed.
 
+**Start with issue 9.** It is the only entry here describing a bug that is
+actively mis-serving screens right now, for roughly seven months of the year.
+Numbers are append-only so existing references stay valid; they are not a
+priority order.
+
 Found 2026-08-04 while diagnosing the admin bulk-delete 500 (fixed — see the
 `delete_queryset` override in `TeamScopedAdminMixin`, `screens/admin.py`).
 
@@ -131,26 +136,60 @@ describe what they will actually see.
 
 ---
 
-## 3. Orphaned media files accumulate forever
+## 3. Media orphans — original diagnosis was wrong; only edge paths leak
 
-**Symptom.** `/srv/media` grows monotonically; deleted content leaves its file behind.
+**This entry previously claimed `/srv/media` grows monotonically because nothing deletes files
+on `Source` delete. That is false — retested 2026-08-12.** `django_cleanup.apps.CleanupConfig`
+is in `INSTALLED_APPS` (`base_settings.py:51`) and the deploy does not override
+`INSTALLED_APPS`, so it is active in production. It registers on `post_init`, `pre_save`,
+`post_save` and `post_delete`, and it handles every path the old entry worried about:
 
-**Cause.** Nothing removes the file. There is no `post_delete` cleanup — the `pre_delete`
-receiver in `screens/models/source.py` only bumps playlist timestamps — and Django has not
-auto-deleted `FileField` files since 1.3. The periodic expired-source cleanup in
-`screens/tasks.py` compounds it by bulk-deleting sources on a schedule.
+| Path | File removed? |
+|---|---|
+| `source.delete()` | yes |
+| `Source.objects.filter(...).delete()` (bulk) | yes |
+| Replacing `Source.file` and saving | yes (old file) |
+| `screens.tasks.cleanup_sources` periodic task | yes |
 
-Note this also means a media-directory permission problem would surface on **upload**, never
-on delete.
+**Beware when re-verifying this.** django-cleanup defers deletion to
+`transaction.on_commit()`, which never fires inside `TestCase`'s rolled-back transaction, so a
+naive probe shows every file surviving and looks exactly like the bug described above. That is
+what produced the original wrong diagnosis. Use `TransactionTestCase`, or
+`self.captureOnCommitCallbacks(execute=True)`.
 
-**Fix.** A `prune_orphaned_media` management command under `screens/management/commands/`. It
-lists files in `MEDIA_ROOT` unreferenced by any `Source.file`, prints them with a total size,
-and deletes only when given `--delete`; dry-run is the default. Auditable and safe against a
-rolled-back transaction, unlike a `post_delete` receiver. Can join `CELERY_BEAT_SCHEDULE` once
-trusted.
+**The residual, much smaller issue.** django-cleanup only reacts to signals, so files can still
+be stranded by paths it cannot see, and nothing can audit or reclaim them:
 
-**Tests.** Temporary `MEDIA_ROOT` with one referenced and one orphaned file: dry-run reports
-one orphan and deletes nothing; `--delete` removes only the orphan.
+- uploads whose transaction later rolled back — the file is written before commit, and nothing
+  was deleted for django-cleanup to react to;
+- `Source` rows deleted through a data migration using `apps.get_model`, since signals bind to
+  the concrete class and do not fire for historical models (the same property `0032` relies on);
+- anything predating django-cleanup's addition, or left by a restore that put the database and
+  `/srv/media` out of step.
+
+**Correction to the old permission note.** It said a media-directory permission problem "would
+surface on upload, never on delete". The opposite half is now wrong: deletes do touch the
+filesystem. `docker-compose.yml` bind-mounts `./media:/srv/media`, which masks the Dockerfile's
+build-time `chown -R advertising:advertising /srv/media` with the host directory's ownership, so
+a mismatch breaks both. django-cleanup catches the failure and calls `logger.exception`
+(`django_cleanup/handlers.py:112-116`) rather than raising, so it reaches `docker compose logs`
+only via Python's last-resort stderr handler — easy to miss until issue 1 is done.
+
+**Fix, if it is ever worth it.** The `prune_orphaned_media` management command described
+before — list files in `MEDIA_ROOT` unreferenced by any `Source.file`, print them with a total
+size, delete only with `--delete`, dry-run by default. It is now an occasional audit tool rather
+than the primary cleanup mechanism, so it does **not** belong in `CELERY_BEAT_SCHEDULE`:
+scheduling a deleter against a race it cannot see is worse than the leak. Check whether real
+orphans exist before writing it:
+
+```bash
+docker compose exec advertising python manage.py shell -c \
+  "from screens.models import Source; import os; from django.conf import settings; \
+   db={s.file.name for s in Source.objects.exclude(file='')}; \
+   disk={os.path.relpath(os.path.join(r,f), settings.MEDIA_ROOT) \
+         for r,_,fs in os.walk(settings.MEDIA_ROOT) for f in fs}; \
+   print(len(disk-db), 'orphans of', len(disk), 'files')"
+```
 
 ---
 
@@ -212,45 +251,120 @@ plain `/api/playlist/<id>` fetch from an unrelated IP still reports `intersperse
 
 ---
 
-## 6. Naive `datetime.now()` under `USE_TZ=True`
+## 6. Timezone consistency: naive `datetime.now()`, and the Celery beat settings
 
 **Symptom.** `RuntimeWarning: DateTimeField ... received a naive datetime while time zone
 support is active` on most test runs, and on every content query in production.
 
 **Cause.** `USE_TZ = True` has been set since `f36c997` (`advertising/base_settings.py`), but
-several call sites still build naive values: `screens/models/playlist.py` `get_sources()` and
-`screens/tasks.py` `cleanup_sources()`. Upstream fixed this in `c80aa01`, which this branch
-has not taken.
+three call sites still build naive values: `screens/models/playlist.py:64` (`get_sources`),
+`screens/tasks.py:9` (`cleanup_sources`) and `screens/models/schedule_rule.py:32`
+(`is_expired`). Upstream fixed these in `c80aa01`, which this branch has not taken.
 
-**Not currently wrong, which is why it has survived.** Django sets `os.environ["TZ"]` from
-`TIME_ZONE` and calls `time.tzset()` (`django/conf/__init__.py:254-264`), so `datetime.now()`
-returns Europe/London local time and Django interprets naive values in the same zone — the
-instant lands correctly. What it costs: warning noise, an ambiguous hour every autumn when
-the clocks go back, and a trap for `aggregate_last_updated` in `screens/views.py`, whose
-`max()` raises `TypeError: can't compare offset-naive and offset-aware datetimes` the moment
-a naive value reaches it.
+**These three are not currently wrong**, which is why they have survived. Django sets
+`os.environ["TZ"]` from `TIME_ZONE` and calls `time.tzset()`
+(`django/conf/__init__.py:254-264`), so `datetime.now()` returns Europe/London local time and
+Django interprets naive values in the same zone — the instant lands correctly. What they cost:
+warning noise, an ambiguous hour every autumn when the clocks go back, and a trap for
+`aggregate_last_updated` in `screens/views.py`, whose `max()` raises
+`TypeError: can't compare offset-naive and offset-aware datetimes` the moment a naive value
+reaches it.
 
-**Fix.** Swap those call sites to `timezone.now()`; `c80aa01` is the reference. Note the same
-commit also carries test-fixture changes, since schedule fixtures are written in naive local
-time.
+**That safety rests on the container carrying tzdata, so verify before relying on it.** Neither
+`docker-compose.yml` nor `.env.sample` sets `TZ`, and the deploy's
+`docker/advertising/settings.py` does not override `TIME_ZONE`, so production takes
+`Europe/London` from `base_settings`. Django's `tzset()` call then only resolves it if
+`/usr/share/zoneinfo` is populated. The `python:3.12` base image is Debian and ships tzdata, so
+this should hold — but if it ever did not, `datetime.now()` would return UTC while Django kept
+interpreting naive values as Europe/London, and every one of these sites would silently land an
+hour out during BST. Confirm with:
+
+```bash
+docker compose exec advertising python -c \
+    "import datetime; print(datetime.datetime.now(), datetime.datetime.now(datetime.UTC))"
+```
+
+**Do not blanket-swap `datetime.now()` to `timezone.now()`.** Issue 9 is the *opposite*
+problem — aware UTC where naive local is required — and some naive uses are deliberate and
+correct:
+
+- `room_schedules/o365_requests.py:66` compares `now.hour` against `HOUR_BREAK_POINT`. That
+  needs the local wall clock and would break on `timezone.now()`, which yields the UTC hour.
+- `book_adhoc` in the same module keeps `datetime.now()` on purpose: O365 handles the zone
+  server-side from the `timeZone` field, and switching would shift the wall-clock time sent.
+
+The rule is which *kind* of time each site wants — instant, or local wall clock — not which
+function looks more modern.
+
+**Also in this area: the Celery beat settings are half-configured.** `USE_TZ = True` sits
+alongside `DJANGO_CELERY_BEAT_TZ_AWARE=False` (`base_settings.py:341`) and no
+`CELERY_ENABLE_UTC` at all. Upstream pairs `USE_TZ = True` with
+`DJANGO_CELERY_BEAT_TZ_AWARE = True` and `CELERY_ENABLE_UTC = False` ("keep Beat scheduling in
+`CELERY_TIMEZONE`, which matches app `TIME_ZONE`, rather than UTC"). Ours is internally
+inconsistent, and it governs when beat tasks actually fire relative to local time. Fold this
+into issue 9's fix, or into the dependency bump (issue 7) if the beat version moves.
 
 ---
 
-## 7. Django bump from upstream not taken
+## 7. Dependency bump — Django, Unfold, and everything else
 
-**Symptom.** None yet. Pinned at `django==4.2.29` while upstream (`saty9/advertising_screens`)
-has moved on (`a650fd8`).
+**Symptom.** None yet. Everything is pinned exactly and nothing has moved for a while:
+`django==4.2.29`, `django-unfold==0.82.0`, `celery[redis]==5.3.6`, `django-celery-beat==2.5.0`,
+`django-celery-results==2.6.0`, `django-recurrence==1.14`, `pillow==12.1.1`. Upstream has
+already bumped Django (`a650fd8`).
 
-**Cause.** This branch is 8 commits behind `upstream/master` and deliberately does not merge
-it — see below.
-
-**Fix, and the trap in it.** Upstream carries
+**Take it as an isolated `uv` change, not by merging upstream.** `upstream/master` carries
 `screens/migrations/0023_alter_playlist_parents_alter_source_playlists`, which collides with
-this branch's `0023`–`0032`. Any merge needs the migration numbers reconciling by hand, so
-take the Django bump as an isolated `uv` change rather than by merging. Upstream's
-`dc1b5f3` (recurrence widget styles) is already done here independently, so of the 8 commits
-only the Django bump and `c80aa01` (issue 6) are real gaps — `c57cd51`, the interspersed
-change, was ported in this branch's own commit rather than merged.
+this branch's `0023`–`0032`; a merge needs the numbers reconciling by hand. Its content is
+help_text-only `AlterField`s already superseded by our `0030`, so there is nothing to gain.
+Of upstream's 8 unmerged commits, `dc1b5f3` (recurrence widget) is already done here
+independently — `recurrence_unfold.css` is byte-identical and the `Media` block is at
+`screens/admin.py:213` — and `c57cd51` (interspersed) was ported in this branch's own commit.
+That leaves only the Django bump and `c80aa01` (issues 6 and 9) as real gaps.
+
+**Checklist for when you do it, in order:**
+
+1. **Do issue 10 (`DEFAULT_AUTO_FIELD`) first.** Bumping without it invites the natural fix —
+   Django's `BigAutoField` default — which would generate an `AlterField` on every primary key
+   in the project.
+2. **Delete `USE_L10N = True`** (`base_settings.py:338`). Deprecated in Django 4.0, *removed*
+   in 5.0, so it is a hard blocker. It is the **only** one I found: I checked for
+   `django.utils.timezone.utc`, `index_together`, `providing_args`, `DEFAULT_FILE_STORAGE`,
+   `STATICFILES_STORAGE`, `force_text`, `ugettext`, `NullBooleanField` and
+   `django.conf.urls.url`, and none are present. (The `timezone.utc` hits in
+   `screens/tests/models/` and `room_schedules/o365_requests.py` are the stdlib
+   `datetime.timezone`, not Django's.) No `STORAGES`/`*_STORAGE` settings are configured
+   either, so the 4.2 storage migration is a no-op here.
+3. **Unfold is the real risk, not Django.** This project overrides two Unfold internals —
+   `templates/unfold/helpers/userlinks.html` (36 lines; the team switcher, which is this
+   project's own mechanism rather than Unfold's unconfigured `SITE_DROPDOWN`) and
+   `templates/unfold/helpers/unauthenticated_header.html` (12 lines) — plus
+   `templates/admin/login.html` (100) and `templates/admin/index.html` (149). An override
+   silently keeps rendering the old markup when the upstream template moves on. Diff each
+   against the new version's original before assuming the admin still works.
+4. **Re-capture help screenshots after an Unfold bump**, and expect churn. The `ticker-fieldset`
+   shot in `helpdocs/screenshots.py` drives both a `<details>` toggle and Django's `collapse.js`
+   Show/Hide because which one Unfold renders is version-dependent — that `run_js` is
+   version-sensitive by construction. Its `clip='fieldset.collapse'` also assumes the ticker is
+   the only collapsible fieldset on the screen form.
+5. **Fold in the Celery beat timezone settings** (issue 6) if `celery` or `django-celery-beat`
+   move, since that is where `CELERY_ENABLE_UTC` and `DJANGO_CELERY_BEAT_TZ_AWARE` bite.
+6. **Watch the deploy's in-place mutation of `CELERY_BEAT_SCHEDULE`.** The deploy override does
+   `del CELERY_BEAT_SCHEDULE['build-schedule-hourly']` and then inserts
+   `build-schedule-often`. Renaming or removing that key in `base_settings.py` raises `KeyError`
+   at container start, and the `advertising` submodule pointer must advance to a commit
+   containing the change *before* the deploy repo is updated — the same ordering hazard issue 1
+   documents for `LOGGING`. Nothing else in the bump touches it, but a beat version change is
+   exactly when someone reorganises that dict.
+7. **Fix issue 11 first if you want CI to gate on `makemigrations --check`** — it currently
+   reports a phantom pending migration on every developer machine, which makes it useless as a
+   guard for exactly the kind of model drift a framework bump causes.
+
+**Checked against the deploy:** `docker/advertising/settings.py` overrides none of `USE_L10N`,
+`DEFAULT_AUTO_FIELD`, `USE_TZ`, `TIME_ZONE`, `CELERY_ENABLE_UTC` or
+`DJANGO_CELERY_BEAT_TZ_AWARE`, so all of the settings work above lands in `base_settings.py`
+alone, with no `.env.sample` entry needed. Per the three-layer model in `CLAUDE.md`, only add a
+deploy-side `os.getenv` if a value should vary per site — none of these should.
 
 ---
 
@@ -261,3 +375,140 @@ One occurrence in the production nginx log, 2026-08-03 15:22:
 worker died, so Django logs nothing regardless of configuration. May simply have been a deploy
 restart. Not worth chasing on a single sample — once issue 1 is done, check whether it recurs
 and whether anything appears in the app log alongside it.
+
+---
+
+## 9. Schedule rules fire an hour late for seven months of the year
+
+Found 2026-08-12 while auditing what else was worth taking from upstream.
+
+**Symptom.** From late March to late October — British Summer Time, so including right now —
+every `ScheduleRule` is active an hour later than the operator set it. A rule entered as
+09:00–17:00 actually plays 10:00–18:00, and the schedule falls back to the default playlist
+during the first hour. In winter it behaves correctly, which is what makes it look like an
+intermittent or "sometimes the wrong playlist" complaint rather than a clock bug.
+
+**Cause.** `Schedule.get_playlist()` (`screens/models/schedule.py:30`) does
+`now = timezone.now()`. Under `USE_TZ=True` that is an **aware UTC** datetime, so `now.time()`
+is the UTC wall clock. It is then compared against `start_time` / `end_time`, which are
+`TimeField`s an operator fills in as local civil time. During BST the two are an hour apart.
+
+This applies to production as written: the deploy's `docker/advertising/settings.py` overrides
+neither `TIME_ZONE` nor `USE_TZ`, so live screens run on `Europe/London` with `USE_TZ=True`,
+exactly the combination that triggers it.
+
+Two smaller faults ride along in the same expression:
+
+- `starts__lte=now` compares a `DateField` against an aware datetime, so around local midnight
+  the date can be off by one.
+- `rule.occurrences.between(yesterday, tomorrow, dtstart=yesterday)` passes aware datetimes
+  into `django-recurrence`, which works in naive datetime space.
+
+Note this is the **opposite** of issue 6: not a naive value where aware was wanted, but aware
+UTC where naive *local* was wanted. Do not treat the two as one job.
+
+**Evidence.** A throwaway probe with `time_machine` at two fixed instants, one rule covering
+17:00–18:00 daily:
+
+```
+BST  17:30 local (16:30Z) -> default   <- rule did not fire
+GMT  17:30 local (17:30Z) -> evening   <- same rule, correct
+```
+
+**Why the existing tests pass.** `screens/tests/models/tests_schedule.py:42-43` builds fixtures
+as `start_time=timezone.now() - timedelta(minutes=1)`, so the fixture times are in UTC too and
+agree with the buggy code. The suite cannot fail while the fixtures share the defect. Rework
+them to naive local time **before** changing the model, or the fix is unverifiable — upstream
+did exactly this in `4092b5a`.
+
+**Fix.** Upstream `c80aa01`. In `Schedule.get_playlist()`:
+
+```python
+# Local (Europe/London) wall clock: `starts` is a DateField and start_time/end_time are
+# TimeFields keyed to civil time, and django-recurrence works in naive datetime space.
+now = timezone.localtime().replace(tzinfo=None)
+yesterday = now - timedelta(days=1)
+tomorrow = now + timedelta(days=1)
+```
+
+and in `ScheduleRule.is_expired()` (`screens/models/schedule_rule.py:32`):
+
+```python
+cutoff = timezone.localtime(timezone.now()).replace(tzinfo=None) - timezone.timedelta(days=2)
+return not bool(self.occurrences.after(cutoff, inc=True))
+```
+
+**Tests.** After the fixture rework, add a regression test that freezes a known BST instant and
+asserts a rule set in local civil time is active — that is the assertion that would have caught
+this, and neither repo has it.
+
+**Help docs.** `helpdocs/content/users/schedules.md` describes rule times without saying which
+clock they are in. Worth stating that they are local time, and that they follow the clocks.
+
+---
+
+## 10. `DEFAULT_AUTO_FIELD` unset — 19 warnings on every command
+
+**Symptom.** Every single `manage.py` invocation prints 19 `models.W042` warnings, one per
+model, burying whatever you actually ran the command to see.
+
+**Cause.** `DEFAULT_AUTO_FIELD` is not set in `advertising/base_settings.py`, so Django warns
+for every model that does not declare an explicit primary key type.
+
+**Fix.** One line, no migration:
+
+```python
+# Preserve the legacy AutoField PK type; existing DBs were created before
+# Django 3.2's switch to BigAutoField.
+DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
+```
+
+Upstream added exactly this in `c80aa01`. **It must be `AutoField`, not Django's `BigAutoField`
+default** — these tables predate Django 3.2, and `BigAutoField` would generate an `AlterField`
+on every primary key in the project, plus every FK that references them. Do this before the
+dependency bump (issue 7).
+
+`base_settings.py` is the only file to touch: the deploy override does not set it, and it should
+not vary per site, so no `.env.sample` entry is wanted.
+
+---
+
+## 11. `makemigrations --check` always reports a phantom pending migration
+
+**Symptom.** `uv run python manage.py makemigrations --check --dry-run` reports a pending
+`alter_source_file` on a clean tree, so it cannot be used as a CI guard against model drift.
+The generated migration differs per developer, so committing it just moves the problem.
+
+**Cause.** `Source.file`'s `help_text` is an f-string over `MAX_IMG_WIDTH`/`MAX_IMG_HEIGHT`
+(`screens/models/source.py:36`), so those values are baked into migration state. Migration
+`0019` recorded 1920x1080 from `base_settings`; the dev `settings.py` default is 2160x3840, so
+the autodetector sees a permanent diff.
+
+**These dimensions are deliberately per-deployment, so this is not just a dev-machine quirk.**
+The deploy sets `MAX_IMG_WIDTH = int(os.getenv("MAX_IMG_WIDTH", "1920"))` and both keys are
+documented in `.env.sample:87-88`. Any site that tunes them gets a `help_text` differing from
+migration state as well. Nothing breaks at runtime — `help_text` is not enforced — but no value
+can be "correct" in a migration, which is what makes this unfixable by editing the recorded
+migration.
+
+**A related but separate point about the import.** `screens/models/source.py:6` does
+`from advertising.settings import MAX_IMG_WIDTH, MAX_IMG_HEIGHT`, importing the settings
+*module* rather than going through `django.conf.settings`. In production this still resolves
+correctly, because the Dockerfile copies the deploy override *onto* that exact module
+(`ADD docker/advertising/settings.py advertising/.`), so `advertising.settings` **is** the
+production settings file. What it does break is `DJANGO_SETTINGS_MODULE`: pointing it at any
+other module leaves these names reading `advertising/settings.py` regardless. That is why
+`advertising.screenshot_settings` does not isolate them, and why `makemigrations --check` still
+reports the drift under that module.
+
+**Fix.** Routing through `django.conf.settings` is necessary but not sufficient — the f-string
+is evaluated at class-definition time, so the value would still be baked in. The dimensions have
+to leave migration state altogether: make the `help_text` lazy with
+`django.utils.text.format_lazy`, or drop them from `help_text` and surface them in the form or
+the upload validation message instead. Only then is `makemigrations --check` usable as a CI
+gate.
+
+**Same import style elsewhere, worth auditing in the same pass:** `screens/forms.py:6`,
+`screens/views.py:11`, `screens/utils.py:3` and `advertising/urls.py:22`. None currently
+misbehave, for the same reason as above, but they carry the same `DJANGO_SETTINGS_MODULE`
+blind spot.
