@@ -53,7 +53,7 @@ Screen → Schedule → ScheduleRule → Playlist → PlaylistEntry → Source (
 
 - A **Screen** (physical display) points to a **Schedule**, which picks the active **Playlist** based on time-of-day rules (**ScheduleRule** with recurrence).
 - **Playlists** support inheritance via `PlaylistRelation` (M2M self-reference): child playlists can inherit `Source` items from parent playlists.
-- Both **Screen** and **Playlist** have an optional `interspersed_source` that is shown between regular entries.
+- Both **Screen** and **Playlist** have an optional `interspersed_playlist` plus an `interspersed_rate`: that playlist's items are mixed in after every `rate` regular items. The player composes them base → playlist-level → screen-level, so the screen's rate counts items that already include the playlist's insertions. Ticker screens cannot play the screen-level stream — see `KNOWN_ISSUES.md`, and `ScreenAdmin` hides the fields while `ticker_enabled` is set.
 - **Sources** have `valid_from` / `expires_at` fields; `screens.tasks` runs periodic Celery tasks every 5 minutes to clean up expired sources and update playlists.
 
 ### Settings

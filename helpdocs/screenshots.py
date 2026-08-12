@@ -141,7 +141,10 @@ SHOTS = (
     ),
     Shot(
         name='ticker-fieldset',
-        path='/admin/screens/screen/{screen_id}/change/',
+        # The ticker screen, not the one screen-form uses: a screen with the
+        # ticker on hides its interspersed fields, so the two shots need
+        # different screens to each show what they are documenting.
+        path='/admin/screens/screen/{ticker_screen_id}/change/',
         as_user=ADMIN,
         wait_for=FORM,
         # The ticker fieldset ships collapsed. Depending on the Unfold version

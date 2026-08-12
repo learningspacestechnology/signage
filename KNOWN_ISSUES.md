@@ -179,7 +179,82 @@ Playlist.objects.annotate(n=Length("name")).filter(n__gt=200).values_list("id", 
 
 ---
 
-## 5. Watch — intermittent 502 on room schedule polling
+## 5. Ticker screens cannot play screen-level interspersed content
+
+**Symptom.** A screen with the ticker enabled ignores its own **Interspersed playlist**. The
+playlist's own interspersed content still plays. Currently unreachable rather than fixed —
+`ScreenAdmin` hides the two fields while `ticker_enabled` is set (see
+`_interspersed_blocked_by_ticker`), so an operator can no longer configure the combination.
+
+**Cause.** `screens/views.py`. A ticker screen gets `_ticker_redirect_payload`, a single
+iframe pointing at `/screen_wrapper/<id>`. That template's inner iframe loads
+`/playlist/<id>`, which nginx serves as the Vue player, which fetches
+`/api/playlist/<id>` → `view_playlist_json` → `render_playlist_json(playlist)` with no
+`screen` argument. The screen's identity never crosses into the inner frame, so
+`interspersed.screen` is always `null`. Predates the move to playlist-based interspersed
+content; the old single-source field was lost the same way.
+
+**Fix.** Make `view_playlist_json` screen-aware. Resolve the caller with the existing
+`get_screen(request)` and pass `screen=screen` **only** when
+`screen.schedule.get_playlist().pk == playlist_id`. That guard matters: without it an
+arbitrary `/api/playlist/<id>` fetch would leak another screen's configuration. Then remove
+the admin guard and its tests in `screens/tests/test_admin_interspersed.py`, and put the
+demo data's screen-level interspersed setting back on the ticker screen so `screen-form` and
+`ticker-fieldset` can share one screen again (`helpdocs/demo_data.py`,
+`helpdocs/screenshots.py`).
+
+**Ruled out.** Pointing the inner iframe at `/screen/<id>` instead: that re-enters the ticker
+branch in `view_screen_json` and nests wrappers until the browser dies.
+
+**Tests.** `test_ticker_inner_playlist_json_includes_the_screen_stream`, and one asserting a
+plain `/api/playlist/<id>` fetch from an unrelated IP still reports `interspersed.screen` as
+`null`.
+
+---
+
+## 6. Naive `datetime.now()` under `USE_TZ=True`
+
+**Symptom.** `RuntimeWarning: DateTimeField ... received a naive datetime while time zone
+support is active` on most test runs, and on every content query in production.
+
+**Cause.** `USE_TZ = True` has been set since `f36c997` (`advertising/base_settings.py`), but
+several call sites still build naive values: `screens/models/playlist.py` `get_sources()` and
+`screens/tasks.py` `cleanup_sources()`. Upstream fixed this in `c80aa01`, which this branch
+has not taken.
+
+**Not currently wrong, which is why it has survived.** Django sets `os.environ["TZ"]` from
+`TIME_ZONE` and calls `time.tzset()` (`django/conf/__init__.py:254-264`), so `datetime.now()`
+returns Europe/London local time and Django interprets naive values in the same zone — the
+instant lands correctly. What it costs: warning noise, an ambiguous hour every autumn when
+the clocks go back, and a trap for `aggregate_last_updated` in `screens/views.py`, whose
+`max()` raises `TypeError: can't compare offset-naive and offset-aware datetimes` the moment
+a naive value reaches it.
+
+**Fix.** Swap those call sites to `timezone.now()`; `c80aa01` is the reference. Note the same
+commit also carries test-fixture changes, since schedule fixtures are written in naive local
+time.
+
+---
+
+## 7. Django bump from upstream not taken
+
+**Symptom.** None yet. Pinned at `django==4.2.29` while upstream (`saty9/advertising_screens`)
+has moved on (`a650fd8`).
+
+**Cause.** This branch is 8 commits behind `upstream/master` and deliberately does not merge
+it — see below.
+
+**Fix, and the trap in it.** Upstream carries
+`screens/migrations/0023_alter_playlist_parents_alter_source_playlists`, which collides with
+this branch's `0023`–`0032`. Any merge needs the migration numbers reconciling by hand, so
+take the Django bump as an isolated `uv` change rather than by merging. Upstream's
+`dc1b5f3` (recurrence widget styles) is already done here independently, so of the 8 commits
+only the Django bump and `c80aa01` (issue 6) are real gaps — `c57cd51`, the interspersed
+change, was ported in this branch's own commit rather than merged.
+
+---
+
+## 8. Watch — intermittent 502 on room schedule polling
 
 One occurrence in the production nginx log, 2026-08-03 15:22:
 `GET /event_schedules/2/3/state_hash` → 502. A 502 means uwsgi refused the connection or the

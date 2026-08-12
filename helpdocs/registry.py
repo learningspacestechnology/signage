@@ -121,7 +121,7 @@ PAGES = (
     Page(
         audience=USERS, slug='playlists', section='Playlists',
         summary='Building a playlist, ordering entries, setting how long each one '
-                'shows, and adding a logo between every slide.',
+                'shows, and mixing a logo playlist in between slides.',
         admin_url_names=(
             'screens_playlist_changelist',
             'screens_playlist_change',

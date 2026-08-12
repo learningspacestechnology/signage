@@ -16,8 +16,9 @@ have it, the device itself will tell you — see
 3. Choose the **Schedule** it should follow. See
    [Scheduling what plays when](help:schedules).
 4. Enter the **IP** address of the device.
-5. Optionally set **Interspersed Content** — a single item shown between every
-   entry on this particular screen, whatever playlist is playing.
+5. Optionally set an **Interspersed playlist** and **rate** — a playlist mixed
+   into whatever this screen is showing, whichever playlist that is. See
+   [Interspersed content](help:playlists).
 6. Save.
 
 ![Adding a screen](screenshot:screen-form)

@@ -39,6 +39,13 @@ seconds, and it returns the playlist currently in force and when that playlist
 was last changed. The device compares that timestamp with what it already has and
 reloads only when something has actually changed.
 
+The timestamp covers more than the playlist itself. It is the newest change
+across the playlist, the playlist's interspersed playlist, and the screen's own
+interspersed settings — otherwise editing a logo playlist, which is a separate
+record, would never reach any device. The same value is reported by
+`/api/screen/<id>`, and the two must agree exactly: the player compares them as
+plain strings, so any difference makes it re-fetch on every poll.
+
 **Polling this is what sets `last seen`.** Online/offline on the dashboard is
 derived entirely from it: a screen is online if it has polled within the last
 {{ config.SCREEN_OFFLINE_AFTER }}. Nothing else updates that timestamp.

@@ -150,6 +150,15 @@ def seed():
     logo.teams.add(demo_team)
 
     # ---- Playlists -------------------------------------------------------
+    logo_playlist = Playlist.objects.create(
+        name='Institution Branding',
+        description='Mixed in between other playlists\' entries. Kept short so '
+                    'it flashes past rather than taking a turn.',
+        default_duration=4,
+    )
+    logo_playlist.teams.add(demo_team)
+    PlaylistEntry.objects.create(playlist=logo_playlist, number=10, source=logo)
+
     campus_wide = Playlist.objects.create(
         name='Campus Wide Notices',
         description='Shown on every screen. Keep this short — it is inherited '
@@ -163,7 +172,8 @@ def seed():
         description='Library-specific content, plus everything from Campus Wide '
                     'Notices.',
         default_duration=10,
-        interspersed_source=logo,
+        interspersed_playlist=logo_playlist,
+        interspersed_rate=2,
     )
     library.teams.add(demo_team)
 
@@ -241,8 +251,15 @@ def seed():
         'Library open until 22:00 all week  •  Level 3 closed for maintenance '
         'on Thursday  •  Ask at the desk for help finding anything'
     )
-    ticker_screen.interspersed_source = logo
     ticker_screen.save()
+
+    # Screen-level interspersed content goes on a screen *without* a ticker:
+    # the two are mutually exclusive, and the screen-form screenshot needs a
+    # form where the fields are actually shown.
+    interspersed_screen = screens[1]
+    interspersed_screen.interspersed_playlist = logo_playlist
+    interspersed_screen.interspersed_rate = 3
+    interspersed_screen.save()
 
     # A second team's screen, so the team switcher demonstrably filters.
     other_playlist = Playlist.objects.create(name='Estates Notices', default_duration=10)
@@ -368,7 +385,8 @@ def seed():
     return {
         'playlist_id': library.pk,
         'schedule_id': schedule.pk,
-        'screen_id': ticker_screen.pk,
+        'screen_id': interspersed_screen.pk,
+        'ticker_screen_id': ticker_screen.pk,
         'room_id': rooms[1].pk,
         'building_id': building.pk,
         'bookable_room_id': rooms[2].pk,

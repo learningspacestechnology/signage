@@ -32,6 +32,14 @@ Open the screen under **Screens** and expand the **Ticker tape** section.
 
 Enabling the ticker is only half of it — a screen with the ticker on but no
 message shows nothing at all.
+
+!!! note "Interspersed content set on the screen"
+    A screen with the ticker on can't also mix in its own **Interspersed
+    playlist**, so those fields disappear from the screen form while the ticker
+    is enabled. Anything already set is kept and applies again as soon as the
+    ticker is turned off. A *playlist's* own interspersed content is unaffected
+    and plays either way — see
+    [Interspersed content](help:playlists).
 {% endif %}
 
 {% if perms.screens.change_ticker_text %}
