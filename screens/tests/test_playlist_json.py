@@ -139,6 +139,31 @@ class RenderPlaylistJsonTests(TestCase):
         self.assertNotEqual(render_last_updated(self.base), before)
         self.assertEqual(render_last_updated(self.base), self.logo.last_updated.isoformat())
 
+    def test_editing_the_screens_interspersed_playlist_republishes(self):
+        """Adding a slide to the *screen's* interspersed playlist must reach devices.
+
+        Screen.last_updated covers *which* playlist is interspersed and at what
+        rate; it does not move when the *contents* of that playlist change, since
+        adding an entry touches the playlist row and walks its children, and a
+        Screen is not a child of anything. So aggregate_last_updated needs both
+        screen-side terms, not one. Upstream replaced ours with theirs and lost
+        this case; this is the test that stops the same simplification here.
+        """
+        self.screen.interspersed_playlist = self.room
+        self.screen.save()
+        self.screen.refresh_from_db()
+        before = render_last_updated(self.base, self.screen)
+
+        later = datetime.datetime.fromisoformat("2030-01-01T00:00:00+00:00")
+        with time_machine.travel(later, tick=False):
+            entry(self.room, web_source("http://e/room2"), number=2)
+        self.room.refresh_from_db()
+        self.screen.refresh_from_db()
+
+        self.assertNotEqual(render_last_updated(self.base, self.screen), before)
+        self.assertEqual(render_last_updated(self.base, self.screen),
+                         self.room.last_updated.isoformat())
+
     def test_pointing_a_screen_at_an_older_playlist_still_republishes(self):
         """The case a plain max() over playlist timestamps cannot see.
 
