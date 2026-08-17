@@ -59,6 +59,13 @@ CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'Europe/London'
+# CELERY_TIMEZONE above is what actually pins Beat's clock: Celery.timezone only
+# consults enable_utc when conf.timezone is falsy, so app.timezone is
+# Europe/London either way and crontab entries below mean local civil time
+# regardless of this flag. Kept for parity with upstream and to state the intent
+# explicitly. Its one live effect is moving crontab.to_local() onto celery's
+# mktime-based fallback -- do not read it as the thing selecting the zone.
+CELERY_ENABLE_UTC = False
 
 from celery.schedules import crontab
 
@@ -338,7 +345,12 @@ USE_I18N = True
 USE_L10N = True
 
 USE_TZ = True
-DJANGO_CELERY_BEAT_TZ_AWARE=False
+# Beat must agree with USE_TZ. At False, django-celery-beat's ModelEntry writes
+# PeriodicTask.last_run_at as a naive UTC datetime, which Django then reads back
+# as Europe/London -- so "Last Run At" in the admin is an hour early for the
+# whole of BST, every sync warns about a naive datetime, and each schedule
+# reload replays one spurious run.
+DJANGO_CELERY_BEAT_TZ_AWARE = True
 
 
 # Static files (CSS, JavaScript, Images)

@@ -80,6 +80,10 @@ Nothing recorded at all for a task that should have run means the scheduler or
 the worker isn't running. That's a deployment matter — the application itself
 can't tell you the difference, and no amount of clicking here will help.
 
+Times shown here — including **Last Run At** on a periodic task — are in
+{{ config.TIME_ZONE }}, and schedules are evaluated against that same clock, so a
+job set for `02:15` runs at quarter past two by a local clock all year round.
+
 ## Symptoms that come back to a job
 
 | Symptom | Job |

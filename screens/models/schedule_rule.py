@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import Signal, receiver
@@ -29,10 +29,37 @@ class ScheduleRule(models.Model):
                   "(lower number = higher precedence). If none match, the schedule's default playlist is shown.")
 
     def is_expired(self):
-        return not bool(self.occurrences.after(timezone.datetime.today() - timezone.timedelta(days=2), inc=True))
+        """Has this rule's pattern finished for good?
+
+        Read by the cleanup_schedule Celery task, which DELETES whatever this
+        returns True for -- so a raise here is worse than a wrong answer.
+
+        django-recurrence generates occurrences in whatever awareness its
+        dtstart carries. RecurrenceField serialises dtstart as UTC, so a rule
+        saved with one deserialises aware, while a rule saved without one (what
+        the admin widget produces) generates naive. Comparing the two raises
+        "can't compare offset-naive and offset-aware datetimes", and because
+        cleanup_schedule filters with a lambda over every rule, one such row
+        aborts the whole task and nothing gets cleaned up.
+
+        So normalise both sides to naive local civil time, consistently with
+        Schedule.get_playlist. Note upstream's c80aa01 fixes only the cutoff and
+        still raises on the dtstart; this deliberately goes further.
+        """
+        cutoff = timezone.localtime().replace(tzinfo=None) - timedelta(days=2)
+        dtstart = self.occurrences.dtstart
+        if dtstart is not None and timezone.is_aware(dtstart):
+            dtstart = timezone.localtime(dtstart).replace(tzinfo=None)
+        return not bool(self.occurrences.after(cutoff, inc=True, dtstart=dtstart))
 
 
 @receiver(pre_save, sender=ScheduleRule)
 def before_save(sender, **kwargs):
+    """Store "end of day" as 23:59:59.999999 rather than 00:00.
+
+    Load-bearing for Schedule.get_playlist, which reads start_time > end_time as
+    a window that wraps midnight: without this rewrite an all-day 00:00-00:00
+    rule would look like a wrap, and a 09:00-00:00 rule would run all night.
+    """
     if kwargs['instance'].end_time == datetime.min.time():
         kwargs['instance'].end_time = datetime.max.time()

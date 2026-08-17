@@ -3,10 +3,12 @@
 Things found but deliberately not fixed yet, each with enough detail to pick up cold.
 Remove an entry when it is fixed.
 
-**Start with issue 9.** It is the only entry here describing a bug that is
-actively mis-serving screens right now, for roughly seven months of the year.
 Numbers are append-only so existing references stay valid; they are not a
-priority order.
+priority order, and gaps mean an entry was fixed and removed.
+
+Nothing left here is actively mis-serving screens. Issue 9 was — schedule rules
+evaluated in the UTC wall clock, so every rule fired an hour late throughout BST
+and day-of-week patterns fired on adjacent days — and it is fixed.
 
 Found 2026-08-04 while diagnosing the admin bulk-delete 500 (fixed — see the
 `delete_queryset` override in `TeamScopedAdminMixin`, `screens/admin.py`).
@@ -280,17 +282,26 @@ plain `/api/playlist/<id>` fetch from an unrelated IP still reports `intersperse
 
 ---
 
-## 6. Timezone consistency: naive `datetime.now()`, and the Celery beat settings
+## 6. Timezone consistency: naive `datetime.now()`
 
 **Symptom.** `RuntimeWarning: DateTimeField ... received a naive datetime while time zone
 support is active` on most test runs, and on every content query in production.
 
 **Cause.** `USE_TZ = True` has been set since `f36c997` (`advertising/base_settings.py`), but
-three call sites still build naive values: `screens/models/playlist.py:64` (`get_sources`),
-`screens/tasks.py:9` (`cleanup_sources`) and `screens/models/schedule_rule.py:32`
-(`is_expired`). Upstream fixed these in `c80aa01`, which this branch has not taken.
+two call sites still build naive values: `screens/models/playlist.py:64` (`get_sources`) and
+`screens/tasks.py:9` (`cleanup_sources`). Upstream fixed these in `c80aa01`, which this branch
+has not taken.
 
-**These three are not currently wrong**, which is why they have survived. Django sets
+**This entry previously listed a third site, `schedule_rule.py:32` (`is_expired`), as mere
+warning noise. That was wrong twice over** — it was a live `TypeError`, not a warning, and
+upstream's `c80aa01` did not fix it either. `RecurrenceField` serialises `dtstart` as UTC, so
+any rule saved with one deserialises *aware*, and `.after(<naive cutoff>)` raised
+`can't compare offset-naive and offset-aware datetimes`. Because `cleanup_schedule` filters
+with a lambda over every rule, one such row aborted the whole task. Fixed alongside issue 9 by
+normalising both the cutoff and the `dtstart`, and covered by
+`screens/tests/models/tests_schedule_rule.py`.
+
+**The two remaining sites are not currently wrong**, which is why they have survived. Django sets
 `os.environ["TZ"]` from `TIME_ZONE` and calls `time.tzset()`
 (`django/conf/__init__.py:254-264`), so `datetime.now()` returns Europe/London local time and
 Django interprets naive values in the same zone — the instant lands correctly. What they cost:
@@ -313,9 +324,9 @@ docker compose exec advertising python -c \
     "import datetime; print(datetime.datetime.now(), datetime.datetime.now(datetime.UTC))"
 ```
 
-**Do not blanket-swap `datetime.now()` to `timezone.now()`.** Issue 9 is the *opposite*
-problem — aware UTC where naive local is required — and some naive uses are deliberate and
-correct:
+**Do not blanket-swap `datetime.now()` to `timezone.now()`.** The schedule bug that was issue 9
+was the *opposite* problem — aware UTC where naive local is required — and some naive uses are
+deliberate and correct:
 
 - `room_schedules/o365_requests.py:66` compares `now.hour` against `HOUR_BREAK_POINT`. That
   needs the local wall clock and would break on `timezone.now()`, which yields the UTC hour.
@@ -325,13 +336,12 @@ correct:
 The rule is which *kind* of time each site wants — instant, or local wall clock — not which
 function looks more modern.
 
-**Also in this area: the Celery beat settings are half-configured.** `USE_TZ = True` sits
-alongside `DJANGO_CELERY_BEAT_TZ_AWARE=False` (`base_settings.py:341`) and no
-`CELERY_ENABLE_UTC` at all. Upstream pairs `USE_TZ = True` with
-`DJANGO_CELERY_BEAT_TZ_AWARE = True` and `CELERY_ENABLE_UTC = False` ("keep Beat scheduling in
-`CELERY_TIMEZONE`, which matches app `TIME_ZONE`, rather than UTC"). Ours is internally
-inconsistent, and it governs when beat tasks actually fire relative to local time. Fold this
-into issue 9's fix, or into the dependency bump (issue 7) if the beat version moves.
+**The Celery beat settings that used to be listed here are done**, alongside issue 9.
+`DJANGO_CELERY_BEAT_TZ_AWARE = True` was the half that mattered: at `False`, `ModelEntry` wrote
+`PeriodicTask.last_run_at` as naive UTC, which Django read back as `Europe/London` — an hour
+early for the whole of BST. `CELERY_ENABLE_UTC = False` was added for upstream parity only;
+`Celery.timezone` consults it solely when `conf.timezone` is falsy, and `CELERY_TIMEZONE` is
+set, so it does not pick the zone. See the comments on both keys in `base_settings.py`.
 
 ---
 
@@ -349,7 +359,8 @@ help_text-only `AlterField`s already superseded by our `0030`, so there is nothi
 Of upstream's 8 unmerged commits, `dc1b5f3` (recurrence widget) is already done here
 independently — `recurrence_unfold.css` is byte-identical and the `Media` block is at
 `screens/admin.py:213` — and `c57cd51` (interspersed) was ported in this branch's own commit.
-That leaves only the Django bump and `c80aa01` (issues 6 and 9) as real gaps.
+That leaves only the Django bump (`a650fd8`, which carries both `DEFAULT_AUTO_FIELD` and the
+`USE_L10N` removal) as a real gap — `c80aa01` and `4d9c07d` were taken with issue 9.
 
 **Checklist for when you do it, in order:**
 
@@ -415,82 +426,6 @@ the production nginx log.
 
 ---
 
-## 9. Schedule rules fire an hour late for seven months of the year
-
-Found 2026-08-12 while auditing what else was worth taking from upstream.
-
-**Symptom.** From late March to late October — British Summer Time, so including right now —
-every `ScheduleRule` is active an hour later than the operator set it. A rule entered as
-09:00–17:00 actually plays 10:00–18:00, and the schedule falls back to the default playlist
-during the first hour. In winter it behaves correctly, which is what makes it look like an
-intermittent or "sometimes the wrong playlist" complaint rather than a clock bug.
-
-**Cause.** `Schedule.get_playlist()` (`screens/models/schedule.py:30`) does
-`now = timezone.now()`. Under `USE_TZ=True` that is an **aware UTC** datetime, so `now.time()`
-is the UTC wall clock. It is then compared against `start_time` / `end_time`, which are
-`TimeField`s an operator fills in as local civil time. During BST the two are an hour apart.
-
-This applies to production as written: the deploy's `docker/advertising/settings.py` overrides
-neither `TIME_ZONE` nor `USE_TZ`, so live screens run on `Europe/London` with `USE_TZ=True`,
-exactly the combination that triggers it.
-
-Two smaller faults ride along in the same expression:
-
-- `starts__lte=now` compares a `DateField` against an aware datetime, so around local midnight
-  the date can be off by one.
-- `rule.occurrences.between(yesterday, tomorrow, dtstart=yesterday)` passes aware datetimes
-  into `django-recurrence`, which works in naive datetime space.
-
-Note this is the **opposite** of issue 6: not a naive value where aware was wanted, but aware
-UTC where naive *local* was wanted. Do not treat the two as one job.
-
-**Evidence.** A throwaway probe with `time_machine` at two fixed instants, one rule covering
-17:00–18:00 daily:
-
-```
-BST  17:30 local (16:30Z) -> default   <- rule did not fire
-GMT  17:30 local (17:30Z) -> evening   <- same rule, correct
-```
-
-**Why the existing tests pass.** `screens/tests/models/tests_schedule.py:42-43` builds fixtures
-as `start_time=timezone.now() - timedelta(minutes=1)`, so the fixture times are in UTC too and
-agree with the buggy code. The suite cannot fail while the fixtures share the defect. Rework
-them to naive local time **before** changing the model, or the fix is unverifiable — upstream
-did exactly this in `4092b5a`.
-
-**Fix — take upstream's branch, not just `c80aa01`.** `c80aa01` fixes the timezone half
-(`screens/models/schedule.py:18`, `now = timezone.localtime().replace(tzinfo=None)`, plus the
-same treatment in `ScheduleRule.is_expired()`). But `saty9/advertising_screens` branch
-`copilot/add-tests-for-adjacent-day-rules`, commit **`4d9c07d`**, supersedes it and fixes two
-further bugs in the same function that this entry did not identify:
-
-- **Overnight rules.** A window where `start_time > end_time` (say 23:00–01:00) wraps midnight
-  and cannot be expressed as a SQL `BETWEEN`. The commit moves window filtering into Python and
-  handles the wrap, picking yesterday's occurrence window when the current time is before
-  `end_time`.
-- **`dtstart` normalisation.** `RecurrenceField` serialises `dtstart` as UTC, but `between()`
-  is being handed naive local bounds. Without converting it back, weekly rules can evaluate
-  against the wrong weekday.
-
-Take `4d9c07d` wholesale rather than reimplementing. Two caveats found while reviewing it
-(both reported upstream, see the review note in the session scratchpad):
-
-- Its two `test_byday_*` tests sit at module level rather than inside `ScheduleTests`, so they
-  are never collected; once re-indented they error on
-  `recurrence.Weekday(recurrence.TUESDAY)` — `recurrence.TUESDAY` is already a `Weekday`.
-  With both corrected all 16 pass, so the implementation is sound and only the tests were wrong.
-- Window filtering in Python means `get_playlist()` now loads every rule on the schedule per
-  call, and it runs on each 60-second meta poll per screen. Fine at realistic rule counts.
-
-**Tests.** After the fixture rework, add a regression test that freezes a known BST instant and
-asserts a rule set in local civil time is active — that is the assertion that would have caught
-this, and neither repo has it. `4d9c07d`'s own tests cover the overnight and weekday cases.
-
-**Help docs.** `helpdocs/content/users/schedules.md` describes rule times without saying which
-clock they are in. Worth stating that they are local time, and that they follow the clocks.
-
----
-
 ## 10. `DEFAULT_AUTO_FIELD` unset — 19 warnings on every command
 
 **Symptom.** Every single `manage.py` invocation prints 19 `models.W042` warnings, one per
@@ -507,7 +442,10 @@ for every model that does not declare an explicit primary key type.
 DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
 ```
 
-Upstream added exactly this in `c80aa01`. **It must be `AutoField`, not Django's `BigAutoField`
+Upstream added exactly this in **`a650fd8`** ("chore: bump django") — *not* `c80aa01`, as this
+entry said before; `c80aa01`'s `base_settings.py` diff is only the timezone keys. `a650fd8` is
+also where `USE_L10N` is deleted, so issue 7's step 2 and this entry come from the same commit.
+**It must be `AutoField`, not Django's `BigAutoField`
 default** — these tables predate Django 3.2, and `BigAutoField` would generate an `AlterField`
 on every primary key in the project, plus every FK that references them. Do this before the
 dependency bump (issue 7).
@@ -556,3 +494,42 @@ gate.
 `screens/views.py:11`, `screens/utils.py:3` and `advertising/urls.py:22`. None currently
 misbehave, for the same reason as above, but they carry the same `DJANGO_SETTINGS_MODULE`
 blind spot.
+
+---
+
+## 12. A schedule rule with no day selected silently never fires
+
+Found 2026-08-17 while fixing issue 9.
+
+**Symptom.** An operator ticks **Weekly** under Occurrences, selects no days, and saves. The
+rule looks fine in the admin, its times are right, and it never plays. Same for **Monthly**
+with no day-of-month.
+
+**Cause.** The admin's recurrence widget writes no `DTSTART` — `recurrence-widget.js` never
+emits one, so a saved rule is a bare `RRULE:FREQ=WEEKLY`. `Schedule.get_playlist()` therefore
+falls back to `normalized_dtstart = stored_dtstart or ref_start`, anchoring the pattern on
+*today*. A weekly pattern anchored on today next occurs in seven days, which is never inside
+the one-day window being tested, so the rule can never match. A pattern that names its days
+(`BYDAY=MO,WE,FR`, which is what the widget writes as soon as you tick a day) is unaffected,
+because the named days pin the phase regardless of the anchor.
+
+**Not a regression.** The pre-issue-9 code had the same hole, reached differently — it anchored
+on *yesterday*. Pinned by `test_a_rule_with_no_day_selected_never_fires` in
+`screens/tests/models/tests_schedule.py` so the behaviour is documented rather than accidental.
+
+**Fix.** Anchor on the rule's own `starts` date, which the operator has already set and which
+does not move:
+
+```python
+normalized_dtstart = stored_dtstart or datetime.combine(rule.starts, time.min)
+```
+
+Keep `ref_start`'s `-= timedelta(seconds=1)`; `time.min` lands occurrences exactly on midnight,
+which `between()` excludes. **This changes behaviour for existing rows** — a bare-weekly rule
+that has never fired would start firing on `starts`'s weekday — so it needs its own tests and a
+line in the release note rather than being slipped in.
+
+**Better still, refuse it at the form.** A recurrence that cannot resolve to any day is not
+something an operator ever means; validating it in `ScheduleRule.clean()` turns a silent
+non-event into a message at the point of the mistake. Upstream carries the same fallback, so
+report whichever way this goes.
