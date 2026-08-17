@@ -25,6 +25,14 @@ Django produced.
 and to `mail_admins`, which is inert because `ADMINS` and email are unset. uwsgi logs only
 the request line.
 
+**Re-verified 2026-08-12 and confirmed as written.** No `LOGGING`, `ADMINS`, `EMAIL_BACKEND` or
+`EMAIL_HOST` exists in any of the three settings layers, and `settings.ADMINS` is `[]`. Emitting
+the exact record Django uses for a 500 (`django.request` ERROR with `exc_info`) under Django's
+`DEFAULT_LOGGING` produces a full traceback on stderr at `DEBUG=True` and **nothing at all** at
+`DEBUG=False`. Note the `django` logger does have two handlers attached, so Python's last-resort
+stderr fallback never engages — the record is found, handled, and discarded by both. That is
+what makes this different from issue 3's cleanup errors, which do reach the log.
+
 **Approach.** Log to stdout/stderr, not to a file inside the container: uwsgi, celery and
 nginx already stream there so there is one place to look; a file inside the container has no
 volume and dies on rebuild; and Docker rotates streams natively. Per the three-layer settings
@@ -110,29 +118,49 @@ the deploy repo, then one `./update.sh` picks up both. The reverse order takes t
 
 ---
 
-## 2. `TeamAdmin` bulk delete returns 500
+## 2. `TeamAdmin` refuses a blocked delete in the wrong vocabulary
 
-**Symptom.** Bulk-deleting a team that still has members or owned objects gives a 500 instead
-of the intended refusal message.
+**This entry previously claimed bulk delete returns a 500. It does not — retested 2026-08-12.**
+It was a predicted second bug rather than an observed one, and the prediction was wrong.
 
-**Cause.** `screens/admin.py`, `TeamAdmin`. `has_delete_permission(request, obj=None)` returns
-`True` for a superuser when `obj is None`, which is exactly how `delete_selected` asks. The
-action then reaches `delete_queryset` → `delete_model`, which raises a bare `ValidationError`
-that the admin does not catch. Distinct from the bulk-delete bug already fixed: `TeamAdmin`
-does not use `TeamScopedAdminMixin` and overrides `delete_queryset` to loop per object, so it
-never touches `.distinct()`.
+Actual behaviour, as a superuser:
 
-**Fix.** Override `get_deleted_objects` and put blocked teams into the returned `protected`
-list. That is Django's own hook — it makes the confirmation page explain the refusal and hides
-the "Yes, I'm sure" button, covering the single-object and bulk paths identically. Keep
-`delete_queryset`/`delete_model` as a backstop but convert the `ValidationError` into
-`self.message_user(..., level=messages.ERROR)` rather than raising. Leave the `pre_delete`
-signal in `screens/models/team.py` alone — it guards shell and cascade deletes, and the tests
-in `screens/tests/test_team_scoping.py` depend on it raising.
+| Case | Confirmation page | After confirming | Deleted? |
+|---|---|---|---|
+| Team owns a playlist | 200, no confirm button | 403 | no |
+| Team has a member | 200, no confirm button | 403 | no |
+| Clean team | 200 | 302 | yes |
+| Single-object delete form, blocked team | — | 403 | no |
 
-**Help docs.** `helpdocs/content/technical/users-and-teams.md` says the guard "can't be
-bypassed with a bulk action" — true, but the operator currently sees a crash. Reword to
-describe what they will actually see.
+Nothing crashes and nothing is wrongly deleted. The guard holds on both paths.
+
+**Cause of the real, much smaller defect.** The old entry assumed `delete_selected` only asks
+`has_delete_permission(request, obj=None)`. It does not: `get_deleted_objects` asks it for
+*each* object (`django/contrib/admin/utils.py:132`). Ours returns `False` for a blocked team, so
+the team lands in `perms_needed`, the page renders Django's *"Cannot delete team … your account
+doesn't have permission to delete the following types of objects"* with no confirm button, and a
+hand-crafted POST hits `raise PermissionDenied` (`django/contrib/admin/actions.py:43-44`).
+`delete_queryset` / `delete_model` are never reached in this path, so the `ValidationError` the
+old entry blamed never fires.
+
+So the operator is refused *and* told something — just in the wrong vocabulary. The page blames
+their account's permissions when the real reason is that the team still owns content or has
+members, which is information they could act on.
+
+**Fix.** Still the `get_deleted_objects` override, but now for wording rather than
+crash-avoidance. One ordering detail to save re-deriving: `delete_selected` guards its delete
+branch with `not protected` (`actions.py:43`), so putting blocked teams into `protected` is by
+itself enough to stop the 403 on a crafted POST. But `perms_needed` is populated independently,
+so the misleading permission sentence stays unless `has_delete_permission(request, obj)` also
+stops returning `False` — let `protected` carry the refusal instead. Leave the `pre_delete`
+signal in `screens/models/team.py` alone; it guards shell and cascade deletes and
+`screens/tests/test_team_scoping.py` depends on it raising.
+
+**Priority: cosmetic.** It refuses correctly today, and no data is at risk.
+
+**Help docs.** `helpdocs/content/technical/users-and-teams.md` says the guard "can't be bypassed
+with a bulk action". That is true and now verified by test, so the correction the old entry
+asked for is not needed.
 
 ---
 
@@ -193,28 +221,29 @@ docker compose exec advertising python manage.py shell -c \
 
 ---
 
-## 4. Over-long names crash any logged admin action
+## 4. Over-long names crashing the admin log — does not happen
 
-**Symptom.** Latent, not yet observed. Adding, changing or deleting a `Source` or `Playlist`
-whose name exceeds 200 characters would 500 in production.
+**This entry was wrong. Retested 2026-08-12; nothing to fix.** It was latent and unobserved,
+which is why it survived unchallenged.
 
-**Cause.** `Source.name` and `Playlist.name` are unbounded `TextField`s, but the admin writes
-`str(obj)` into `django_admin_log.object_repr`, a `varchar(200)`. Under MariaDB's strict mode
-that raises `DataError: Data too long`. SQLite does not enforce lengths, so it never appears
-in development.
+The premise was sound as far as it went: `Source.name` and `Playlist.name` are unbounded
+`TextField`s (`source.py:32`, `playlist.py:23`) and `django_admin_log.object_repr` really is a
+`varchar(200)`. The conclusion did not follow. `LogEntryManager.log_action` truncates before the
+insert — `object_repr=object_repr[:200]` (`django/contrib/admin/models.py:42`) — and every admin
+write goes through it (`django/contrib/admin/options.py:926,943,961`).
 
-**Fix.** Add `max_length=200` to both fields. For `TextField` this drives form validation and
-the widget without altering the MySQL `longtext` column, so the generated migration should be
-a no-op at the database level — confirm during implementation rather than assuming. Check for
-existing offenders first:
+Verified end to end: adding a `Source` with a 400-character name through the admin returns 302,
+creates the object, and writes a `LogEntry` whose `object_repr` is exactly 200 characters. The
+database never sees an over-length value, so the MariaDB-versus-SQLite distinction the entry
+leaned on is irrelevant.
 
-```python
-from django.db.models.functions import Length
-Source.objects.annotate(n=Length("name")).filter(n__gt=200).values_list("id", "n")
-Playlist.objects.annotate(n=Length("name")).filter(n__gt=200).values_list("id", "n")
-```
+**Optional, and a preference rather than a fix.** `max_length=200` on the two fields would still
+buy form validation, a saner widget, and readable list displays. Worth doing only if someone is
+already in those models.
 
-**Help docs.** Mention the limit in `helpdocs/content/users/content.md` and `playlists.md`.
+**Knock-on.** Migration `0032`'s `NAME_MAX_LENGTH = 150` truncation cites this issue as its
+reason. The truncation itself is fine — auto-generated names stay readable — but the stated
+justification was wrong, and the comment has been corrected in place.
 
 ---
 
@@ -375,6 +404,14 @@ One occurrence in the production nginx log, 2026-08-03 15:22:
 worker died, so Django logs nothing regardless of configuration. May simply have been a deploy
 restart. Not worth chasing on a single sample — once issue 1 is done, check whether it recurs
 and whether anything appears in the app log alongside it.
+
+**Still live, checked 2026-08-12.** The route exists and matches the observed path exactly:
+`path('<int:venue_id>/<int:room_id>/state_hash', room_state_hash, ...)`
+(`room_schedules/urls.py:36`, so `/event_schedules/2/3/state_hash` is venue 2, room 3). Three
+room templates still poll it — `room_screen.html:642`, `room_screen_uoe.html:287`,
+`room_tablet.html:713` — so this is a hot endpoint, not a stale one, and the watch is still
+worth keeping. The 502 itself cannot be reproduced or ruled out from a dev checkout; it needs
+the production nginx log.
 
 ---
 

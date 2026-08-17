@@ -6,8 +6,9 @@ import django.db.models.deletion
 import django.utils.timezone
 
 
-# Playlist.name is an unbounded TextField, but the admin writes str(obj) into
-# django_admin_log.object_repr, a varchar(200). See KNOWN_ISSUES.md.
+# Purely so auto-generated names stay readable in list displays and pickers.
+# (An earlier comment here blamed django_admin_log.object_repr's varchar(200);
+# that was wrong — Django truncates to 200 before the insert.)
 NAME_PREFIX = "Interspersed: "
 NAME_MAX_LENGTH = 150
 
