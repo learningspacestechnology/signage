@@ -203,7 +203,7 @@ def aggregate_last_updated(playlist, screen=None):
     if playlist.interspersed_playlist:
         candidates.append(playlist.interspersed_playlist.last_updated)
     if screen:
-        candidates.append(screen.interspersed_last_updated)
+        candidates.append(screen.last_updated)
         if screen.interspersed_playlist:
             candidates.append(screen.interspersed_playlist.last_updated)
     return max(candidates)
@@ -309,13 +309,21 @@ def _get_meta(request, screen):
         return JsonResponse(_UNCONFIGURED_META)
 
     playlist = screen.schedule.get_playlist()
-    # Targeted update rather than screen.save(). This is the 60-second
-    # heartbeat, so it must not reach Screen's interspersed pre_save receiver:
-    # a queryset .update() bypasses the model layer entirely, which keeps the
-    # heartbeat from republishing content even if that receiver's condition is
-    # ever loosened. It also stops a whole stale row being written back over an
-    # admin edit made in the intervening seconds.
-    models.Screen.objects.filter(pk=screen.pk).update(last_seen=timezone.now())
+    # save(update_fields=[...]) rather than a plain save(): Model._save_table
+    # filters the field list by update_fields *before* calling field.pre_save(),
+    # so Screen.last_updated's auto_now never fires. This is the 60-second
+    # heartbeat -- stamping it would move the published timestamp every minute,
+    # the player's :key would change, it would remount the Playlist component,
+    # and every screen in the estate would restart from item one once a minute.
+    #
+    # Only last_seen is in the UPDATE, so an admin edit made in the intervening
+    # seconds is not written back over. Two differences from the queryset
+    # .update() this replaced, both accepted: pre_save/post_save now fire on
+    # Screen (no receivers today; any added later runs once per device per
+    # minute), and Django raises DatabaseError if the row was deleted between
+    # the read and this write, where .update() silently affected zero rows.
+    screen.last_seen = timezone.now()
+    screen.save(update_fields=["last_seen"])
 
     if screen.has_ticker():
         # Match the sentinel returned by /api/screen so outer Vue's diff stays quiet

@@ -1,8 +1,6 @@
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
-from django.db.models.signals import pre_save
-from django.dispatch import receiver
 from django.template.loader import get_template
 from django.urls import reverse
 from datetime import timedelta
@@ -59,20 +57,26 @@ class Screen(models.Model):
         help_text="How many items play before one interspersed item. "
                   "1 shows an interspersed item after every entry.",
     )
-    # The screen's half of the publish signal. Playlist gets one free from
-    # last_updated's auto_now; Screen has no equivalent, so without this field
-    # the interspersed settings above can be changed with no way for a device to
-    # find out. See stamp_interspersed_change() at the bottom of this module.
-    #
-    # Deliberately NOT auto_now. _get_meta writes to this row on every 60-second
-    # heartbeat, so an auto_now field here would move the published timestamp
-    # every minute -> the player's :key changes -> it remounts the Playlist
-    # component -> the pipeline is rebuilt in created() and advance() runs again
-    # -> every screen restarts its rotation from the first item, once a minute.
-    interspersed_last_updated = models.DateTimeField(default=timezone.now, editable=False)
     ip = models.GenericIPAddressField(
         help_text="The device's network address (IPv4 or IPv6). The system uses it to recognise this physical screen.")
     last_seen = models.DateTimeField(auto_now_add=True, blank=True)
+    # The screen's half of the publish signal, matching Playlist.last_updated.
+    # aggregate_last_updated() in screens/views.py maxes over both, so a change
+    # here reaches devices even when no playlist row moved -- e.g. pointing the
+    # screen at an *older* interspersed playlist, or changing only the rate,
+    # neither of which a max() over playlist timestamps can see.
+    #
+    # auto_now means *any* full save() republishes: renaming a screen or fixing
+    # its IP restarts every attached device's rotation from item one. Accepted
+    # -- a couple of seconds, and rare.
+    #
+    # The 60-second heartbeat is the write that must not move it, and is kept
+    # off by _get_meta saving with update_fields=["last_seen"]:
+    # Model._save_table filters the field list by update_fields *before*
+    # calling field.pre_save(), so auto_now never fires for a field left out.
+    # Do not turn that into a plain save(), and do not add a post_save receiver
+    # here without remembering it fires once per device per minute.
+    last_updated = models.DateTimeField(auto_now=True)
     teams = models.ManyToManyField("screens.Team", related_name="screens")
 
     # Editable by anyone with the change_ticker_settings permission
@@ -152,43 +156,3 @@ class Screen(models.Model):
 
     def get_absolute_url(self):
         return reverse('screens/screen_view', args=[str(self.id)])
-
-
-@receiver(pre_save, sender=Screen)
-def stamp_interspersed_change(sender, instance=None, raw=False, **kwargs):
-    """Give the screen its own publish signal for interspersed changes.
-
-    A device is never told anything. It polls /api/meta every 60 seconds and
-    re-fetches only when `current_playlist` or `playlist_last_updated` differs
-    from what it already holds. The latter is aggregate_last_updated() in
-    screens/views.py — a max() over Playlist.last_updated values, each kept
-    current for free by auto_now.
-
-    Saving a Screen touches no Playlist row, so none of those values move:
-
-    * changing only interspersed_rate involves no playlist at all, so the max is
-      provably unchanged — this could never propagate;
-    * pointing at an *older* interspersed playlist leaves the max pinned to the
-      base playlist. This is the common case, not the corner case: a logo
-      playlist is set up once, while the base gets edited weekly;
-    * clearing the FK only republishes by luck, when the playlist removed from
-      the max happened to be the newest one.
-
-    The failure is the expensive kind to support: the admin says "changed
-    successfully", the screen does nothing, and an unrelated edit an hour later
-    makes it start working, so it reads as having fixed itself.
-
-    Compared against the stored row rather than stamped on every save, so that
-    renaming a screen, correcting its IP or editing ticker text — none of which
-    change what plays — do not restart every rotation. The heartbeat is kept off
-    this path entirely by _get_meta's targeted .update().
-    """
-    if instance is None or raw or instance.pk is None:
-        return
-    stored = sender.objects.filter(pk=instance.pk).values(
-        "interspersed_playlist_id", "interspersed_rate").first()
-    if stored is None:
-        return
-    if (stored["interspersed_playlist_id"] != instance.interspersed_playlist_id
-            or stored["interspersed_rate"] != instance.interspersed_rate):
-        instance.interspersed_last_updated = timezone.now()

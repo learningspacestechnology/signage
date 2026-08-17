@@ -27,6 +27,14 @@ Within a minute or so the display should start showing content, and the screen
 should show as online.
 {% endif %}
 
+{% if perms.screens.change_screen %}
+!!! note "Saving a screen restarts its display"
+    Any change you save here — even just the name — makes that display reload
+    and begin its playlist again from the first item. It takes a couple of
+    seconds and nothing is lost, but don't be surprised if you're watching the
+    display while you edit it.
+{% endif %}
+
 ## Getting the address off the device
 
 A display that isn't registered yet shows a **"screen not configured"** page

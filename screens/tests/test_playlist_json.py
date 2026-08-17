@@ -143,8 +143,8 @@ class RenderPlaylistJsonTests(TestCase):
         """The case a plain max() over playlist timestamps cannot see.
 
         The room playlist is older than the base, so without Screen's own
-        interspersed_last_updated the aggregate would not move and no device
-        would ever refetch.
+        last_updated the aggregate would not move and no device would ever
+        refetch.
         """
         old = datetime.datetime.fromisoformat("2020-01-01T00:00:00+00:00")
         mid = datetime.datetime.fromisoformat("2021-01-01T00:00:00+00:00")
@@ -154,8 +154,9 @@ class RenderPlaylistJsonTests(TestCase):
             self.room.meta_times_touch()
         with time_machine.travel(mid, tick=False):
             self.base.meta_times_touch()
-        # Set directly so the pre_save receiver does not stamp it for us.
-        Screen.objects.filter(pk=self.screen.pk).update(interspersed_last_updated=old)
+        # Written through the queryset: .update() never calls pre_save(), so
+        # auto_now cannot overwrite the old value being pinned here.
+        Screen.objects.filter(pk=self.screen.pk).update(last_updated=old)
         self.base.refresh_from_db()
         self.room.refresh_from_db()
         self.screen.refresh_from_db()
@@ -174,6 +175,9 @@ class RenderPlaylistJsonTests(TestCase):
         self.assertNotEqual(render_last_updated(self.base, self.screen), before)
 
     def test_changing_the_rate_republishes(self):
+        """No playlist row moves when only the rate changes, so a max() over
+        playlist timestamps alone could never see it. It rides on
+        Screen.last_updated's auto_now."""
         before = render_last_updated(self.base, self.screen)
         later = datetime.datetime.fromisoformat("2030-01-01T00:00:00+00:00")
         with time_machine.travel(later, tick=False):
@@ -182,14 +186,25 @@ class RenderPlaylistJsonTests(TestCase):
         self.screen.refresh_from_db()
         self.assertNotEqual(render_last_updated(self.base, self.screen), before)
 
-    def test_renaming_a_screen_does_not_republish(self):
+    def test_renaming_a_screen_republishes(self):
+        """The cost of Screen.last_updated being auto_now, accepted knowingly.
+
+        A rename changes nothing about what plays, yet the aggregate moves, so
+        every device on this screen remounts and restarts from item one. The
+        alternative was a pre_save receiver comparing against the stored row;
+        it was ~20 lines plus a query on every screen save, and diverged from
+        upstream. If this ever needs narrowing, the tool is update_fields at
+        the call site, not a receiver on the model.
+        """
         before = render_last_updated(self.base, self.screen)
         later = datetime.datetime.fromisoformat("2030-01-01T00:00:00+00:00")
         with time_machine.travel(later, tick=False):
             self.screen.name = "renamed"
             self.screen.save()
         self.screen.refresh_from_db()
-        self.assertEqual(render_last_updated(self.base, self.screen), before)
+        self.assertNotEqual(render_last_updated(self.base, self.screen), before)
+        self.assertEqual(render_last_updated(self.base, self.screen),
+                         self.screen.last_updated.isoformat())
 
     def test_deleting_an_interspersed_playlist_republishes_its_referrers(self):
         """SET_NULL is a bulk UPDATE: no signals, no auto_now, no republish."""
@@ -200,7 +215,7 @@ class RenderPlaylistJsonTests(TestCase):
         self.base.refresh_from_db()
         self.screen.refresh_from_db()
         before_playlist = self.base.last_updated
-        before_screen = self.screen.interspersed_last_updated
+        before_screen = self.screen.last_updated
 
         later = datetime.datetime.fromisoformat("2030-01-01T00:00:00+00:00")
         with time_machine.travel(later, tick=False):
@@ -209,7 +224,7 @@ class RenderPlaylistJsonTests(TestCase):
         self.base.refresh_from_db()
         self.screen.refresh_from_db()
         self.assertGreater(self.base.last_updated, before_playlist)
-        self.assertGreater(self.screen.interspersed_last_updated, before_screen)
+        self.assertGreater(self.screen.last_updated, before_screen)
 
 
 @override_settings(IP_ACCESS_CONTROL_ENABLED=False)
@@ -232,11 +247,22 @@ class PlayerEndpointTests(TestCase):
         self.assertEqual(screen_json["current_playlist"], meta["current_playlist"])
 
     def test_polling_meta_twice_reports_the_same_timestamp(self):
-        """Guards against a screen field that stamps itself on every heartbeat:
-        the player would remount every minute and restart from item one."""
+        """Guards the heartbeat against Screen.last_updated's auto_now: a plain
+        save() in _get_meta would move the published timestamp every minute, the
+        player's :key would change, and every screen would restart from item
+        one. Kept off by save(update_fields=["last_seen"])."""
         first = self.client.get(f"/api/meta/{self.screen.pk}").json()
         second = self.client.get(f"/api/meta/{self.screen.pk}").json()
         self.assertEqual(first["playlist_last_updated"], second["playlist_last_updated"])
+
+    def test_polling_meta_marks_the_screen_seen(self):
+        """The only thing that sets last_seen, and the whole basis of the
+        dashboard's online/offline split."""
+        stale = datetime.datetime(2020, 1, 1, tzinfo=datetime.timezone.utc)
+        Screen.objects.filter(pk=self.screen.pk).update(last_seen=stale)
+        self.client.get(f"/api/meta/{self.screen.pk}")
+        self.screen.refresh_from_db()
+        self.assertGreater(self.screen.last_seen, stale)
 
     def test_screen_json_carries_the_screen_stream(self):
         out = self.client.get(f"/api/screen/{self.screen.pk}").json()

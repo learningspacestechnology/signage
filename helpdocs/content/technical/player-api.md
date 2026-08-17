@@ -40,11 +40,18 @@ was last changed. The device compares that timestamp with what it already has an
 reloads only when something has actually changed.
 
 The timestamp covers more than the playlist itself. It is the newest change
-across the playlist, the playlist's interspersed playlist, and the screen's own
-interspersed settings — otherwise editing a logo playlist, which is a separate
-record, would never reach any device. The same value is reported by
-`/api/screen/<id>`, and the two must agree exactly: the player compares them as
-plain strings, so any difference makes it re-fetch on every poll.
+across the playlist, the playlist's interspersed playlist, the screen's own
+interspersed playlist, and the screen record itself — otherwise editing a logo
+playlist, which is a separate record, would never reach any device. The same
+value is reported by `/api/screen/<id>`, and the two must agree exactly: the
+player compares them as plain strings, so any difference makes it re-fetch on
+every poll.
+
+Because the screen record counts, **any** saved change to a screen moves the
+timestamp — including changes that don't affect what plays, such as a rename or
+an IP correction. That display reloads and starts its playlist again from the
+first item. Polling itself does not: writing `last seen` is deliberately kept
+off this timestamp, or every display would restart once a minute.
 
 **Polling this is what sets `last seen`.** Online/offline on the dashboard is
 derived entirely from it: a screen is online if it has polled within the last

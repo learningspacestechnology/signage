@@ -21,10 +21,12 @@ class InterspersedMigrationTests(TransactionTestCase):
         self.old_apps = executor.loader.project_state(self.migrate_from).apps
 
     def tearDown(self):
-        # Leave the database at the latest state for whatever runs next.
+        # Leave the database at the *latest* state for whatever runs next --
+        # migrate_to pins 0032 because that is what these tests assert, and it
+        # stopped being the leaf as soon as a later migration was added.
         executor = MigrationExecutor(connection)
         executor.loader.build_graph()
-        executor.migrate(self.migrate_to)
+        executor.migrate(executor.loader.graph.leaf_nodes("screens"))
 
     def run_migration(self):
         executor = MigrationExecutor(connection)

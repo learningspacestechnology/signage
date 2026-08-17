@@ -1,5 +1,4 @@
 from datetime import datetime
-from django.apps import apps
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from django.db import models
@@ -124,7 +123,12 @@ def interspersed_referrers_touched(sender, instance=None, **kwargs):
         return
     for playlist in instance.interspersed_into.all():
         playlist.meta_times_touch()
-    # Screen is imported lazily; screens.models.screen imports this module.
-    apps.get_model("screens", "Screen").objects \
-        .filter(interspersed_playlist=instance) \
-        .update(interspersed_last_updated=timezone.now())
+    # Imported inside the function, not at module level: screens/models/__init__
+    # loads this module before screen.py, and screen.py -> schedule.py ->
+    # `from screens.models import Playlist` would find the package half-built.
+    from .screen import Screen
+    # The value is passed explicitly and must stay that way: a queryset
+    # .update() writes columns directly and never calls pre_save(), so
+    # Screen.last_updated's auto_now cannot fire here.
+    Screen.objects.filter(interspersed_playlist=instance).update(
+        last_updated=timezone.now())
