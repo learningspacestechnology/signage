@@ -458,26 +458,33 @@ agree with the buggy code. The suite cannot fail while the fixtures share the de
 them to naive local time **before** changing the model, or the fix is unverifiable — upstream
 did exactly this in `4092b5a`.
 
-**Fix.** Upstream `c80aa01`. In `Schedule.get_playlist()`:
+**Fix — take upstream's branch, not just `c80aa01`.** `c80aa01` fixes the timezone half
+(`screens/models/schedule.py:18`, `now = timezone.localtime().replace(tzinfo=None)`, plus the
+same treatment in `ScheduleRule.is_expired()`). But `saty9/advertising_screens` branch
+`copilot/add-tests-for-adjacent-day-rules`, commit **`4d9c07d`**, supersedes it and fixes two
+further bugs in the same function that this entry did not identify:
 
-```python
-# Local (Europe/London) wall clock: `starts` is a DateField and start_time/end_time are
-# TimeFields keyed to civil time, and django-recurrence works in naive datetime space.
-now = timezone.localtime().replace(tzinfo=None)
-yesterday = now - timedelta(days=1)
-tomorrow = now + timedelta(days=1)
-```
+- **Overnight rules.** A window where `start_time > end_time` (say 23:00–01:00) wraps midnight
+  and cannot be expressed as a SQL `BETWEEN`. The commit moves window filtering into Python and
+  handles the wrap, picking yesterday's occurrence window when the current time is before
+  `end_time`.
+- **`dtstart` normalisation.** `RecurrenceField` serialises `dtstart` as UTC, but `between()`
+  is being handed naive local bounds. Without converting it back, weekly rules can evaluate
+  against the wrong weekday.
 
-and in `ScheduleRule.is_expired()` (`screens/models/schedule_rule.py:32`):
+Take `4d9c07d` wholesale rather than reimplementing. Two caveats found while reviewing it
+(both reported upstream, see the review note in the session scratchpad):
 
-```python
-cutoff = timezone.localtime(timezone.now()).replace(tzinfo=None) - timezone.timedelta(days=2)
-return not bool(self.occurrences.after(cutoff, inc=True))
-```
+- Its two `test_byday_*` tests sit at module level rather than inside `ScheduleTests`, so they
+  are never collected; once re-indented they error on
+  `recurrence.Weekday(recurrence.TUESDAY)` — `recurrence.TUESDAY` is already a `Weekday`.
+  With both corrected all 16 pass, so the implementation is sound and only the tests were wrong.
+- Window filtering in Python means `get_playlist()` now loads every rule on the schedule per
+  call, and it runs on each 60-second meta poll per screen. Fine at realistic rule counts.
 
 **Tests.** After the fixture rework, add a regression test that freezes a known BST instant and
 asserts a rule set in local civil time is active — that is the assertion that would have caught
-this, and neither repo has it.
+this, and neither repo has it. `4d9c07d`'s own tests cover the overnight and weekday cases.
 
 **Help docs.** `helpdocs/content/users/schedules.md` describes rule times without saying which
 clock they are in. Worth stating that they are local time, and that they follow the clocks.
@@ -549,3 +556,62 @@ gate.
 `screens/views.py:11`, `screens/utils.py:3` and `advertising/urls.py:22`. None currently
 misbehave, for the same reason as above, but they carry the same `DJANGO_SETTINGS_MODULE`
 blind spot.
+
+---
+
+## 12. Converge the screen publish signal onto upstream's shape
+
+Found 2026-08-17 while reviewing `saty9/advertising_screens` branch
+`copilot/add-tests-for-adjacent-day-rules` (`ac5e882`), which fixes the same propagation gap
+this branch fixed in `a34806c` — but more simply. Nothing is broken; this is deliberate
+convergence so future merges stay clean.
+
+**What we have.** `Screen.interspersed_last_updated`, a plain `DateTimeField`, stamped by a
+`pre_save` receiver (`screens/models/screen.py`) that reads the stored row back and only stamps
+when `interspersed_playlist_id` or `interspersed_rate` actually changed. Roughly twenty lines
+plus a query on every screen save. We ruled out `auto_now=True` because `_get_meta` writes to
+that row on every heartbeat.
+
+**What upstream has, and why it is better.** `Screen.last_updated = DateTimeField(auto_now=True)`
+plus `screen.save(update_fields=["last_seen"])` in `_get_meta`. `save(update_fields=…)` only
+calls `pre_save` for the listed fields, so `auto_now` on an excluded field never fires — the
+heartbeat problem is solved at the call site instead of worked around at the model. Verified.
+Two lines instead of twenty, and `Screen.last_updated` matches `Playlist.last_updated`'s
+vocabulary. Their `from .screen import Screen` in the `Playlist` `pre_delete` receiver also
+reads better than our `apps.get_model`.
+
+**The change.**
+
+1. Replace `interspersed_last_updated` with `last_updated = models.DateTimeField(auto_now=True)`
+   and delete `stamp_interspersed_change` entirely.
+2. In `_get_meta`, swap our `Screen.objects.filter(pk=…).update(last_seen=…)` for
+   `screen.last_seen = timezone.now(); screen.save(update_fields=["last_seen"])`. Note this is a
+   small step *back* in defensiveness — a queryset `.update()` cannot reach any receiver at all,
+   whereas `save(update_fields=…)` still fires `pre_save`/`post_save`. Worth it for alignment;
+   just do not later add a `Screen` receiver that assumes it is off the heartbeat path.
+3. **Keep both screen-side terms in `aggregate_last_updated`.** Upstream *replaced*
+   `screen.interspersed_playlist.last_updated` with `screen.last_updated`; that drops republishing
+   when the *contents* of a screen's interspersed playlist change, which is a regression against
+   their own `master`. Reported upstream with a failing test. Ours must read:
+
+   ```python
+   if screen:
+       candidates.append(screen.last_updated)
+       if screen.interspersed_playlist:
+           candidates.append(screen.interspersed_playlist.last_updated)
+   ```
+
+4. Migration: `AddField` of an `auto_now=True` `DateTimeField` generates without an interactive
+   prompt (checked), but rehearse against a copy of production before running it for real —
+   existing rows get whatever the backend's implicit default is.
+
+**Behaviour change to accept knowingly.** With `auto_now`, *any* full save of a `Screen`
+republishes it, so renaming a screen or correcting its IP restarts every attached device's
+rotation from its first item. Our receiver avoided that. The glitch is a few seconds and rare;
+`update_fields` is the tool if it ever needs narrowing.
+
+**Tests.** `screens/tests/test_playlist_json.py` already covers this behaviour and should keep
+passing unchanged — `test_pointing_a_screen_at_an_older_playlist_still_republishes`,
+`test_changing_the_rate_republishes` and `test_polling_meta_twice_reports_the_same_timestamp`
+are the ones that matter. `test_renaming_a_screen_does_not_republish` asserts the behaviour this
+change deliberately gives up, so invert or delete it.
