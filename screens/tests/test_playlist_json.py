@@ -148,9 +148,16 @@ class RenderPlaylistJsonTests(TestCase):
         Screen is not a child of anything. So aggregate_last_updated needs both
         screen-side terms, not one. Upstream replaced ours with theirs and lost
         this case; this is the test that stops the same simplification here.
+
+        Also the one test where all four aggregate candidates are live at once
+        -- base, base's interspersed, screen, screen's interspersed -- so a term
+        that shadowed another under a shared fixture could not hide.
         """
+        self.base.interspersed_playlist = self.logo
+        self.base.save()
         self.screen.interspersed_playlist = self.room
         self.screen.save()
+        self.base.refresh_from_db()
         self.screen.refresh_from_db()
         before = render_last_updated(self.base, self.screen)
 
@@ -248,6 +255,11 @@ class RenderPlaylistJsonTests(TestCase):
 
         self.base.refresh_from_db()
         self.screen.refresh_from_db()
+        # Both halves matter. Without the FK assertions the timestamps could
+        # move while SET_NULL had quietly stopped firing, and the test would
+        # still pass -- it is the pairing that pins the receiver's premise.
+        self.assertIsNone(self.base.interspersed_playlist)
+        self.assertIsNone(self.screen.interspersed_playlist)
         self.assertGreater(self.base.last_updated, before_playlist)
         self.assertGreater(self.screen.last_updated, before_screen)
 
@@ -270,6 +282,30 @@ class PlayerEndpointTests(TestCase):
         meta = self.client.get(f"/api/meta/{self.screen.pk}").json()
         self.assertEqual(screen_json["playlist_last_updated"], meta["playlist_last_updated"])
         self.assertEqual(screen_json["current_playlist"], meta["current_playlist"])
+
+    def test_the_timestamp_is_rendered_in_local_civil_time(self):
+        """Deliberately a summer instant.
+
+        Every other timestamp this suite pins is a January one, where
+        Europe/London and UTC coincide -- so nothing else here can tell the two
+        renderings apart. During BST the offset is +01:00, which is what the
+        admin displays and what anyone reading /api/meta by hand expects.
+
+        The offset is cosmetic to the player, which only diffs two strings; the
+        assertion that actually matters is that both endpoints still agree.
+        """
+        # Future-dated so it outranks the fixtures setUp created at the real
+        # clock, and so this test does not start passing vacuously in 2031.
+        summer = datetime.datetime.fromisoformat("2030-06-15T11:00:00+00:00")
+        with time_machine.travel(summer, tick=False):
+            self.base.meta_times_touch()
+            meta = self.client.get(f"/api/meta/{self.screen.pk}").json()
+            screen_json = self.client.get(f"/api/screen/{self.screen.pk}").json()
+
+        self.assertTrue(meta["playlist_last_updated"].endswith("+01:00"),
+                        meta["playlist_last_updated"])
+        self.assertEqual(meta["playlist_last_updated"], "2030-06-15T12:00:00+01:00")
+        self.assertEqual(screen_json["playlist_last_updated"], meta["playlist_last_updated"])
 
     def test_polling_meta_twice_reports_the_same_timestamp(self):
         """Guards the heartbeat against Screen.last_updated's auto_now: a plain

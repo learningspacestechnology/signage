@@ -213,9 +213,16 @@ def render_last_updated(playlist, screen=None):
     """The single source of the publish timestamp.
 
     /api/screen/<id> and /api/meta must render byte-identical strings, or the
-    player's strict !== diff never settles and it refetches on every poll.
+    player's strict !== diff never settles and it refetches on every poll. That
+    is the whole reason this is a function rather than an expression repeated at
+    each call site.
+
+    Rendered in local civil time, so the offset matches what the admin displays
+    and what anyone reading /api/meta by hand expects. The player only compares
+    two strings that both come from here, so the zone is cosmetic to it -- but
+    both endpoints must pick the same one, which is again why this is a funnel.
     """
-    return aggregate_last_updated(playlist, screen).isoformat()
+    return timezone.localtime(aggregate_last_updated(playlist, screen)).isoformat()
 
 
 def render_playlist_json(playlist, screen=None, screen_id=None):
