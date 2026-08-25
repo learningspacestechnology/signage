@@ -357,8 +357,9 @@ already bumped Django (`a650fd8`).
 this branch's `0023`–`0032`; a merge needs the numbers reconciling by hand. Its content is
 help_text-only `AlterField`s already superseded by our `0030`, so there is nothing to gain.
 Of upstream's 8 unmerged commits, `dc1b5f3` (recurrence widget) is already done here
-independently — `recurrence_unfold.css` is byte-identical and the `Media` block is at
-`screens/admin.py:213` — and `c57cd51` (interspersed) was ported in this branch's own commit.
+independently — the `Media` block is at `screens/admin.py:213` — and `c57cd51` (interspersed)
+was ported in this branch's own commit. **Both recurrence assets have since diverged from
+upstream's** and are no longer byte-identical; see item 5 below.
 That leaves only the Django bump (`a650fd8`, which carries both `DEFAULT_AUTO_FIELD` and the
 `USE_L10N` removal) as a real gap — `c80aa01` and `4d9c07d` were taken with issue 9.
 
@@ -387,16 +388,26 @@ That leaves only the Django bump (`a650fd8`, which carries both `DEFAULT_AUTO_FI
    Show/Hide because which one Unfold renders is version-dependent — that `run_js` is
    version-sensitive by construction. Its `clip='fieldset.collapse'` also assumes the ticker is
    the only collapsible fieldset on the screen form.
-5. **Fold in the Celery beat timezone settings** (issue 6) if `celery` or `django-celery-beat`
+5. **`django-recurrence` carries a workaround against its own widget internals.**
+   `screens/static/screens/js/recurrence_unfold_init.js` decorates the monthly day grid's last
+   four cells (negative `BYMONTHDAY`, which upstream renders as unlabelled integers) and
+   restores the selected highlight, which upstream sets by comparing the loop counter 1..35
+   against the stored value so a saved `-1` never shows as selected — data loss on the next
+   click. It hooks purely on DOM shape: a `table.grid` whose cells read `-4`..`-1`, and the
+   widget root being the immediately-preceding sibling of its textarea. A version bump could
+   move any of that. If the grid stops being decorated after a bump, that file is why; if
+   upstream fixes the highlight itself, drop our half of it rather than double-applying.
+   The `.venv` copy of `recurrence-widget.js` is the reference — do not edit it.
+6. **Fold in the Celery beat timezone settings** (issue 6) if `celery` or `django-celery-beat`
    move, since that is where `CELERY_ENABLE_UTC` and `DJANGO_CELERY_BEAT_TZ_AWARE` bite.
-6. **Watch the deploy's in-place mutation of `CELERY_BEAT_SCHEDULE`.** The deploy override does
+7. **Watch the deploy's in-place mutation of `CELERY_BEAT_SCHEDULE`.** The deploy override does
    `del CELERY_BEAT_SCHEDULE['build-schedule-hourly']` and then inserts
    `build-schedule-often`. Renaming or removing that key in `base_settings.py` raises `KeyError`
    at container start, and the `advertising` submodule pointer must advance to a commit
    containing the change *before* the deploy repo is updated — the same ordering hazard issue 1
    documents for `LOGGING`. Nothing else in the bump touches it, but a beat version change is
    exactly when someone reorganises that dict.
-7. **Fix issue 11 first if you want CI to gate on `makemigrations --check`** — it currently
+8. **Fix issue 11 first if you want CI to gate on `makemigrations --check`** — it currently
    reports a phantom pending migration on every developer machine, which makes it useless as a
    guard for exactly the kind of model drift a framework bump causes.
 
@@ -494,42 +505,3 @@ gate.
 `screens/views.py:11`, `screens/utils.py:3` and `advertising/urls.py:22`. None currently
 misbehave, for the same reason as above, but they carry the same `DJANGO_SETTINGS_MODULE`
 blind spot.
-
----
-
-## 12. A schedule rule with no day selected silently never fires
-
-Found 2026-08-17 while fixing issue 9.
-
-**Symptom.** An operator ticks **Weekly** under Occurrences, selects no days, and saves. The
-rule looks fine in the admin, its times are right, and it never plays. Same for **Monthly**
-with no day-of-month.
-
-**Cause.** The admin's recurrence widget writes no `DTSTART` — `recurrence-widget.js` never
-emits one, so a saved rule is a bare `RRULE:FREQ=WEEKLY`. `Schedule.get_playlist()` therefore
-falls back to `normalized_dtstart = stored_dtstart or ref_start`, anchoring the pattern on
-*today*. A weekly pattern anchored on today next occurs in seven days, which is never inside
-the one-day window being tested, so the rule can never match. A pattern that names its days
-(`BYDAY=MO,WE,FR`, which is what the widget writes as soon as you tick a day) is unaffected,
-because the named days pin the phase regardless of the anchor.
-
-**Not a regression.** The pre-issue-9 code had the same hole, reached differently — it anchored
-on *yesterday*. Pinned by `test_a_rule_with_no_day_selected_never_fires` in
-`screens/tests/models/tests_schedule.py` so the behaviour is documented rather than accidental.
-
-**Fix.** Anchor on the rule's own `starts` date, which the operator has already set and which
-does not move:
-
-```python
-normalized_dtstart = stored_dtstart or datetime.combine(rule.starts, time.min)
-```
-
-Keep `ref_start`'s `-= timedelta(seconds=1)`; `time.min` lands occurrences exactly on midnight,
-which `between()` excludes. **This changes behaviour for existing rows** — a bare-weekly rule
-that has never fired would start firing on `starts`'s weekday — so it needs its own tests and a
-line in the release note rather than being slipped in.
-
-**Better still, refuse it at the form.** A recurrence that cannot resolve to any day is not
-something an operator ever means; validating it in `ScheduleRule.clean()` turns a silent
-non-event into a message at the point of the mistake. Upstream carries the same fallback, so
-report whichever way this goes.

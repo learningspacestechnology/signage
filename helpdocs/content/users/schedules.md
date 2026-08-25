@@ -28,12 +28,32 @@ A rule says "show *this playlist* on *these days* between *these times*".
    something that should work immediately, or a future date to set it up in
    advance.
 4. Set **Occurrences** — which days it applies to, as a repeating pattern
-   (for example, every Monday and Wednesday).
+   (for example, every Monday and Wednesday). Pick the frequency first, then the
+   days it applies to — see [Finishing the pattern](#finishing-the-pattern).
 5. Set **Start time** and **End time**.
 6. Set a **Priority** — see below.
 7. Save.
 
 ![Setting up a schedule rule](screenshot:schedule-rule)
+
+### Finishing the pattern
+
+Choosing a frequency is only half of it. **Weekly** needs at least one day of the
+week; **Monthly** needs at least one date, or a weekday position such as *first
+Monday*; **Yearly** needs a month, and a date or weekday position inside it.
+**Daily** needs nothing further — "every day" is already complete.
+
+Leave one of those unfinished and the rule can't be saved. It would otherwise
+have no day to run on, and would sit in the list looking configured while never
+playing anything.
+
+!!! note "Counting back from the end of the month"
+    In the monthly grid, the four cells after 31 are negative: `-1`, `-2`, `-3`,
+    `-4`. They count back from the **end** of the month, so `-1` is the last day
+    whether that month has 28, 29, 30 or 31 days.
+
+    That's the only way to say "the last day of the month". Picking `31` would
+    skip every month shorter than 31 days — including February every year.
 
 ### Which clock the times are in
 

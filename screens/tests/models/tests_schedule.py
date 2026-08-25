@@ -362,12 +362,14 @@ class ScheduleTests(TestCase):
     # --- documented trap, not a regression -----------------------------------
 
     def test_a_rule_with_no_day_selected_never_fires(self):
-        """A bare FREQ=WEEKLY -- what the admin saves if you tick "Weekly" and
-        select no days -- silently never fires.
+        """A bare FREQ=WEEKLY never fires: no DTSTART means the anchor falls back
+        to "today", so the next occurrence is always a week away.
 
-        The widget stores no DTSTART, so the anchor falls back to "today" and
-        the next occurrence is always a week away. True of the old code too, so
-        this pins the trap rather than reporting a regression. See KNOWN_ISSUES.
+        ScheduleRule.clean() now refuses to save such a rule, so this should be
+        unreachable through the admin. It is pinned here anyway, created through
+        the ORM to bypass validation, because it documents *why* the validation
+        exists -- and because anything already in the database from before it
+        still behaves this way.
         """
         self.schedule.schedulerule_set.create(
             playlist=self.list_a,

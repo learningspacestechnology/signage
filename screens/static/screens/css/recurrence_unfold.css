@@ -179,3 +179,21 @@ html.dark table.recurrence-calendar .remove:visited {
 html.dark table.recurrence-calendar .remove:hover {
     color: var(--color-primary-400);
 }
+
+/* The last four cells of the monthly day grid are negative BYMONTHDAY values
+   -- "last day of the month" and the three before it -- not ordinary dates.
+   recurrence_unfold_init.js adds the class and the caption; the number itself
+   is left alone because the widget parses it back out of the cell text. */
+div.recurrence-widget .grid td.monthday-from-end {
+    font-style: italic;
+}
+
+div.recurrence-widget .grid td.monthday-from-end::after {
+    content: attr(data-monthday-caption);
+    display: block;
+    font-size: 0.5625rem;
+    font-style: normal;
+    line-height: 1;
+    opacity: 0.65;
+    white-space: nowrap;
+}

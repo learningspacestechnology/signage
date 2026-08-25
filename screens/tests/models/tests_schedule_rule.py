@@ -15,6 +15,7 @@ from datetime import date, datetime, time, timedelta
 
 import recurrence
 import time_machine
+from django.core.exceptions import ValidationError
 from django.test import TestCase
 
 from screens.models import Playlist, Schedule, ScheduleRule
@@ -127,3 +128,95 @@ class CleanupScheduleTaskTests(TestCase):
         surviving = set(ScheduleRule.objects.values_list("pk", flat=True))
         self.assertIn(awkward.pk, surviving)
         self.assertNotIn(finished.pk, surviving)
+
+
+class IncompletePatternValidationTests(TestCase):
+    """A pattern that never names a day is missing data, not a valid rule.
+
+    Tick "Weekly", select no day, and django-recurrence stores a bare
+    RRULE:FREQ=WEEKLY. dateutil silently substitutes the weekday of DTSTART --
+    and the admin widget writes no DTSTART, so there is nothing stable to
+    substitute. The rule saves cleanly and then never plays, with nothing
+    anywhere to say why. ScheduleRule.clean refuses it instead.
+
+    These go through full_clean() rather than the ORM on purpose: that is the
+    path the admin inline takes, and it is the only path clean() runs on.
+    """
+
+    def setUp(self):
+        self.playlist = Playlist.objects.create(name="p")
+        self.schedule = Schedule.objects.create(
+            name="s", default_playlist=Playlist.objects.create(name="d"))
+
+    def rule(self, occurrences):
+        return ScheduleRule(
+            schedule=self.schedule, playlist=self.playlist, priority=1,
+            starts=date(2024, 1, 1), start_time=time(9, 0), end_time=time(17, 0),
+            occurrences=occurrences)
+
+    def assertRejected(self, serialized, expected_fragment):
+        rule = self.rule(recurrence.deserialize(serialized))
+        with self.assertRaises(ValidationError) as caught:
+            rule.full_clean()
+        self.assertIn("occurrences", caught.exception.error_dict)
+        self.assertIn(expected_fragment,
+                      " ".join(caught.exception.messages))
+
+    def assertAccepted(self, serialized):
+        self.rule(recurrence.deserialize(serialized)).full_clean()
+
+    def test_weekly_with_no_day_is_rejected(self):
+        self.assertRejected('RRULE:FREQ=WEEKLY', "day of the week")
+
+    def test_monthly_with_no_date_is_rejected(self):
+        self.assertRejected('RRULE:FREQ=MONTHLY', "date of the month")
+
+    def test_yearly_with_no_month_is_rejected(self):
+        self.assertRejected('RRULE:FREQ=YEARLY', "at least one month")
+
+    def test_yearly_with_a_month_but_no_day_is_rejected(self):
+        """BYMONTH alone still leaves the day-of-month defaulting to today, so
+        "every March" is as under-specified as "every year"."""
+        self.assertRejected('RRULE:FREQ=YEARLY;BYMONTH=3', "at least one month")
+
+    def test_a_second_incomplete_rule_is_still_caught(self):
+        """Rules are validated individually; a good one does not excuse a bad one."""
+        self.assertRejected(
+            'RRULE:FREQ=WEEKLY;BYDAY=MO\nRRULE:FREQ=MONTHLY', "date of the month")
+
+    # --- shapes that must keep working ---
+
+    def test_daily_needs_nothing(self):
+        """"Every day" is already complete -- there is no day left to choose."""
+        self.assertAccepted('RRULE:FREQ=DAILY')
+
+    def test_weekly_with_days_is_accepted(self):
+        self.assertAccepted('RRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR')
+
+    def test_monthly_by_date_is_accepted(self):
+        self.assertAccepted('RRULE:FREQ=MONTHLY;BYMONTHDAY=15')
+
+    def test_monthly_by_last_day_of_month_is_accepted(self):
+        """A negative BYMONTHDAY is a real date, not a malformed one: -1 is the
+        last day of the month and tracks month length (30 June, 29 Feb)."""
+        self.assertAccepted('RRULE:FREQ=MONTHLY;BYMONTHDAY=-1')
+
+    def test_monthly_by_weekday_position_is_accepted(self):
+        """"First Monday of the month" names a day without naming a date."""
+        self.assertAccepted('RRULE:FREQ=MONTHLY;BYDAY=MO;BYSETPOS=1')
+
+    def test_yearly_fully_specified_is_accepted(self):
+        self.assertAccepted('RRULE:FREQ=YEARLY;BYMONTH=3;BYMONTHDAY=1')
+
+    def test_explicit_dates_with_no_rule_are_accepted(self):
+        """A recurrence can be nothing but RDATEs, which name their days exactly."""
+        self.assertAccepted('RDATE:20240617T000000Z')
+
+    def test_a_bare_weekly_with_its_own_dtstart_is_accepted(self):
+        """With a stored DTSTART the fallback anchors to a real date rather than
+        a moving one, so "every week from this date" is well defined. This is the
+        shape our own ported upstream tests use."""
+        self.rule(recurrence.Recurrence(
+            dtstart=datetime(2024, 6, 4),
+            rrules=[recurrence.Rule(recurrence.WEEKLY)],
+        )).full_clean()
