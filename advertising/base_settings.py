@@ -352,6 +352,10 @@ USE_TZ = True
 # reload replays one spurious run.
 DJANGO_CELERY_BEAT_TZ_AWARE = True
 
+# Preserve the legacy AutoField PK type; existing DBs were created before
+# Django 3.2's switch to BigAutoField.
+DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
+
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/2.2/howto/static-files/

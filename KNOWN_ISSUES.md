@@ -360,15 +360,24 @@ Of upstream's 8 unmerged commits, `dc1b5f3` (recurrence widget) is already done 
 independently — the `Media` block is at `screens/admin.py:213` — and `c57cd51` (interspersed)
 was ported in this branch's own commit. **Both recurrence assets have since diverged from
 upstream's** and are no longer byte-identical; see item 5 below.
-That leaves only the Django bump (`a650fd8`, which carries both `DEFAULT_AUTO_FIELD` and the
-`USE_L10N` removal) as a real gap — `c80aa01` and `4d9c07d` were taken with issue 9.
+That leaves only the Django bump (`a650fd8`) as a real gap, and only half of it: its
+`DEFAULT_AUTO_FIELD` line has since been taken on its own, so what remains is the `USE_L10N`
+removal and the pins themselves. `c80aa01` and `4d9c07d` were taken with issue 9.
 
 **Checklist for when you do it, in order:**
 
-1. **Do issue 10 (`DEFAULT_AUTO_FIELD`) first.** Bumping without it invites the natural fix —
-   Django's `BigAutoField` default — which would generate an `AlterField` on every primary key
-   in the project.
-2. **Delete `USE_L10N = True`** (`base_settings.py:338`). Deprecated in Django 4.0, *removed*
+1. **`DEFAULT_AUTO_FIELD` is done** — `base_settings.py` now sets it to
+   `django.db.models.AutoField`, so `manage.py` no longer buries its output in 19 `models.W042`
+   warnings and `advertising/tests/test_system_checks.py` fails if that regresses. Keep the
+   reason in mind during the bump: it **must** stay `AutoField`. Reaching for Django's
+   `BigAutoField` default — the natural-looking fix — would generate an `AlterField` on every
+   primary key in the project, plus every FK that references them, because these tables predate
+   Django 3.2.
+   **Note `a650fd8` has been taken in halves.** It carried both `DEFAULT_AUTO_FIELD` and the
+   `USE_L10N` deletion; only the former is in. `USE_L10N` is still valid on 4.2, so it was left
+   for step 2 — do not read "`a650fd8` is done" and skip it, as it is a hard startup blocker on
+   Django 5.0.
+2. **Delete `USE_L10N = True`** (`base_settings.py:345`). Deprecated in Django 4.0, *removed*
    in 5.0, so it is a hard blocker. It is the **only** one I found: I checked for
    `django.utils.timezone.utc`, `index_together`, `providing_args`, `DEFAULT_FILE_STORAGE`,
    `STATICFILES_STORAGE`, `force_text`, `ugettext`, `NullBooleanField` and
@@ -437,40 +446,25 @@ the production nginx log.
 
 ---
 
-## 10. `DEFAULT_AUTO_FIELD` unset — 19 warnings on every command
-
-**Symptom.** Every single `manage.py` invocation prints 19 `models.W042` warnings, one per
-model, burying whatever you actually ran the command to see.
-
-**Cause.** `DEFAULT_AUTO_FIELD` is not set in `advertising/base_settings.py`, so Django warns
-for every model that does not declare an explicit primary key type.
-
-**Fix.** One line, no migration:
-
-```python
-# Preserve the legacy AutoField PK type; existing DBs were created before
-# Django 3.2's switch to BigAutoField.
-DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
-```
-
-Upstream added exactly this in **`a650fd8`** ("chore: bump django") — *not* `c80aa01`, as this
-entry said before; `c80aa01`'s `base_settings.py` diff is only the timezone keys. `a650fd8` is
-also where `USE_L10N` is deleted, so issue 7's step 2 and this entry come from the same commit.
-**It must be `AutoField`, not Django's `BigAutoField`
-default** — these tables predate Django 3.2, and `BigAutoField` would generate an `AlterField`
-on every primary key in the project, plus every FK that references them. Do this before the
-dependency bump (issue 7).
-
-`base_settings.py` is the only file to touch: the deploy override does not set it, and it should
-not vary per site, so no `.env.sample` entry is wanted.
-
----
-
 ## 11. `makemigrations --check` always reports a phantom pending migration
 
-**Symptom.** `uv run python manage.py makemigrations --check --dry-run` reports a pending
-`alter_source_file` on a clean tree, so it cannot be used as a CI guard against model drift.
-The generated migration differs per developer, so committing it just moves the problem.
+**Symptom.** `uv run python manage.py makemigrations --check --dry-run` reports pending changes
+on a clean tree, so it cannot be used as a CI guard against model drift. Two operations show up,
+and **only one of them is the phantom this entry is about**:
+
+| Operation | Kind |
+|---|---|
+| `alter_source_file` | the real phantom — no recorded value can ever be correct |
+| `alter_schedulerule_occurrences` | ordinary drift — one `AlterField` retires it for good |
+
+`alter_source_file`'s generated migration differs per developer, so committing it just moves the
+problem. `alter_schedulerule_occurrences` is a plain literal `help_text` on
+`ScheduleRule.occurrences` (`screens/models/schedule_rule.py:22`) that was extended with the
+negative-`BYMONTHDAY` wording — the same monthly-grid behaviour issue 7 item 5 covers — after
+migration `0030` recorded the shorter text
+(`0030_alter_playlist_interspersed_source_and_more.py:95`). Nothing in it varies per site, so
+`makemigrations` and commit is the whole fix. Anyone attempting the CI gate below hits both, but
+only the `Source.file` half needs the work described here.
 
 **Cause.** `Source.file`'s `help_text` is an f-string over `MAX_IMG_WIDTH`/`MAX_IMG_HEIGHT`
 (`screens/models/source.py:36`), so those values are baked into migration state. Migration

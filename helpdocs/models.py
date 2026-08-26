@@ -14,8 +14,11 @@ class HelpDocsAccess(models.Model):
     (Team) — see CLAUDE.md, "Teams (multi-tenancy) vs. Groups (capabilities)".
     """
 
-    # Declared explicitly only to avoid a models.W042 warning about the
-    # auto-created key. Nothing reads it — there is no table.
+    # Redundant since `DEFAULT_AUTO_FIELD` was added to `base_settings.py` — that
+    # is what keeps models.W042 quiet project-wide now. Kept anyway: an explicit
+    # AutoField deconstructs differently from an auto-created one (which carries
+    # `auto_created=True` and `verbose_name='ID'`), so deleting it would ask for an
+    # AlterField on an unmanaged model for no gain. Nothing reads it — there is no table.
     id = models.AutoField(primary_key=True)
 
     class Meta:
