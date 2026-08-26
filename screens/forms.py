@@ -4,10 +4,15 @@ from django.core.exceptions import ValidationError
 from django.forms import ModelForm, FileField
 from unfold.widgets import UnfoldAdminImageFieldWidget
 from advertising.settings import MAX_IMG_WIDTH, MAX_IMG_HEIGHT
+from screens.team_scope import TeamLabelledModelMultipleChoiceField
 
 
 class PlaylistAssigningSourceForm(ModelForm):
-    playlists = forms.ModelMultipleChoiceField(label="Playlists", queryset=Playlist.objects.all(), widget=forms.CheckboxSelectMultiple, required=False)
+    # Labelled rather than plain, so SourceDisplay.get_form can keep the
+    # playlists this source is already in ticked even when they belong to
+    # another team -- save() below does .set(), so an unticked box silently
+    # removes the source from that playlist. See screens.team_scope.
+    playlists = TeamLabelledModelMultipleChoiceField(label="Playlists", queryset=Playlist.objects.all(), widget=forms.CheckboxSelectMultiple, required=False)
 
     def save(self, commit=True):
         if self.errors:

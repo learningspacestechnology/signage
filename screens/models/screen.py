@@ -26,6 +26,10 @@ TICKER_STYLE_PRESETS = [
     (TICKER_STYLE_BOLD, "Bold marquee"),
 ]
 
+# How recently a screen must have checked in to still count as online. Mirrored
+# in the help docs as SCREEN_OFFLINE_AFTER ("one minute") — change both together.
+ONLINE_WINDOW = timedelta(minutes=1)
+
 TICKER_PRESET_VALUES = {
     TICKER_STYLE_CLASSIC: {"font_size": 50, "font_color": "#ffffff", "bg_color": "#000000",
                            "bg_opacity": 100, "scroll_speed": 80, "bar_height_vh": 6},
@@ -140,8 +144,19 @@ class Screen(models.Model):
             base["scroll_speed"] = self.ticker_scroll_speed_px_sec
         return base
     
+    @staticmethod
+    def online_cutoff():
+        """The `last_seen` threshold for counting as online.
+
+        Shared with the admin's online filter so the tick in the list and the
+        filter that hides it can never disagree. Deliberately a value rather
+        than a queryset: the answer moves with the clock, so it has to be
+        recomputed per request rather than captured at import.
+        """
+        return timezone.now() - ONLINE_WINDOW
+
     def online(self):
-        return self.last_seen and self.last_seen >= timezone.now()-timedelta(minutes=1)
+        return self.last_seen and self.last_seen >= Screen.online_cutoff()
     online.boolean = True
 
     def screen_preview(self):

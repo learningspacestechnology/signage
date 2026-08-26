@@ -73,9 +73,20 @@ walking to the display.
 
 ## Finding screens
 
-On the **Screens** list you can search by **name or IP address**, and filter by
-**schedule** — useful for checking which displays are affected before you change
-a schedule.
+On the **Screens** list you can search by **name or IP address**, and filter by:
+
+- **Schedule** — useful for checking which displays are affected before you
+  change a schedule. Only schedules actually in use by screens you can see are
+  listed, so an option here always returns something.
+- **Online status** — narrows the list to the displays that are reachable, or to
+  the ones that aren't.
+
+!!! note "The online filter is a snapshot"
+    It uses the same {{ config.SCREEN_OFFLINE_AFTER }} rule as the tick in the
+    **Online** column, worked out at the moment the page loads. Reload and a
+    screen that has just checked in — or just stopped — moves between the two.
+    Filter by **Offline**, then reload once before chasing anything: a display
+    briefly restarting will have come back.
 
 {% if perms.screens.change_ticker_text or perms.screens.change_ticker_settings %}
 ## Adding a message bar

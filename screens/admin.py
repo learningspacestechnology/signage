@@ -1,3 +1,5 @@
+import copy
+
 from admin_ordering.admin import OrderableAdmin
 from django import forms
 from django.conf import settings
@@ -20,7 +22,12 @@ from screens.models import (
     Team,
     TeamMembership,
 )
-from screens.team_scope import scope_to_active_team, scope_to_user_teams
+from screens.team_scope import (
+    apply_scoped_choices,
+    scope_to_active_team,
+    scope_to_user_teams,
+    scoped_picker_kwargs,
+)
 
 
 class TeamScopedAdminMixin:
@@ -69,11 +76,22 @@ class TeamScopedAdminMixin:
             kwargs['queryset'] = scope_to_user_teams(Playlist.objects.all(), request)
         return super().formfield_for_manytomany(db_field, request, **kwargs)
 
+    def get_form(self, request, obj=None, **kwargs):
+        """Stash the object under edit for formfield_for_foreignkey.
+
+        Django hands that hook no ``obj``, but a scoped picker has to know what
+        it is already set to in order to keep that value selectable — see
+        ``scoped_picker_kwargs``.
+        """
+        request._team_scoped_obj = obj
+        return super().get_form(request, obj, **kwargs)
+
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name in ('interspersed_playlist', 'default_playlist', 'schedule'):
-            kwargs['queryset'] = scope_to_active_team(
-                db_field.related_model.objects.all(), request,
-            )
+            obj = getattr(request, '_team_scoped_obj', None)
+            current = [getattr(obj, db_field.attname, None)] if obj else []
+            kwargs.update(
+                scoped_picker_kwargs(db_field.related_model, request, current))
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
     def save_related(self, request, form, formsets, change):
@@ -99,18 +117,54 @@ class HideChangeFormDeleteMixin:
         return super().change_view(request, object_id, form_url, extra_context=extra_context)
 
 
-class PlaylistEntryInline(OrderableAdmin, TabularInline):
+class ScopedPickerInline:
+    """Keep the values an inline's existing rows point at selectable.
+
+    The change form's own pickers hit this through ``TeamScopedAdminMixin``;
+    a formset reaches it one level down. A row pointing at another team's
+    content would drop out of the scoped choices, render blank, and take the
+    whole parent form down with it on save — see ``scoped_picker_kwargs``.
+
+    ``get_formset`` is the hook that still has the parent object, so the current
+    values are collected there and read back when the fields are built.
+    """
+
+    picker_field = None            # the team-scoped FK on the inline model
+    parent_fk = None               # the FK back to the object being edited
+    picker_scope = staticmethod(scope_to_active_team)
+
+    def get_formset(self, request, obj=None, **kwargs):
+        # Keyed by inline class: one change form runs several inlines, and each
+        # must read back its own values rather than the previous inline's.
+        stash = getattr(request, '_scoped_picker_pks', None)
+        if stash is None:
+            stash = request._scoped_picker_pks = {}
+        attname = self.model._meta.get_field(self.picker_field).attname
+        stash[self.__class__] = list(
+            self.model._default_manager
+            .filter(**{self.parent_fk: obj}).values_list(attname, flat=True)
+        ) if obj is not None else []
+        return super().get_formset(request, obj, **kwargs)
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == self.picker_field:
+            current = getattr(request, '_scoped_picker_pks', {}).get(self.__class__, ())
+            kwargs.update(scoped_picker_kwargs(
+                db_field.related_model, request, current, scope=self.picker_scope,
+            ))
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+
+class PlaylistEntryInline(ScopedPickerInline, OrderableAdmin, TabularInline):
     model = PlaylistEntry
     ordering_field = 'number'
     verbose_name_plural = "Content (plays in number order, lowest first)"
     extra = 0
     fields = ('number', 'thumbnail', 'source', 'duration')
     readonly_fields = ('thumbnail',)
-
-    def formfield_for_foreignkey(self, db_field, request, **kwargs):
-        if db_field.name == 'source':
-            kwargs['queryset'] = scope_to_user_teams(Source.objects.all(), request)
-        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+    picker_field = 'source'
+    parent_fk = 'playlist'
+    picker_scope = staticmethod(scope_to_user_teams)
 
 
 class PlaylistParentsInlineForm(forms.ModelForm):
@@ -120,6 +174,11 @@ class PlaylistParentsInlineForm(forms.ModelForm):
         super_list = cleaned.get('super_list')
         if request is None or super_list is None or request.user.is_superuser:
             return cleaned
+        # A relation the other team wired may already point outside this user's
+        # teams. Re-saving that row unchanged has to pass, or the whole playlist
+        # form becomes unsaveable; only new or repointed relations are checked.
+        if self.instance.pk and self.instance.super_list_id == super_list.pk:
+            return cleaned
         if not super_list.teams.filter(pk__in=request.user.teams.values_list('pk', flat=True)).exists():
             raise ValidationError(
                 "You can only inherit from a playlist owned by one of your own teams.",
@@ -127,18 +186,16 @@ class PlaylistParentsInlineForm(forms.ModelForm):
         return cleaned
 
 
-class PlaylistParentsInline(TabularInline):
+class PlaylistParentsInline(ScopedPickerInline, TabularInline):
     model = Playlist.parents.through
     form = PlaylistParentsInlineForm
     fk_name = "inheriting_list"
     verbose_name_plural = "Playlists to inherit from"
     verbose_name = "Parent List"
     extra = 0
-
-    def formfield_for_foreignkey(self, db_field, request, **kwargs):
-        if db_field.name == 'super_list':
-            kwargs['queryset'] = scope_to_user_teams(Playlist.objects.all(), request)
-        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+    picker_field = 'super_list'
+    parent_fk = 'inheriting_list'
+    picker_scope = staticmethod(scope_to_user_teams)
 
     def get_formset(self, request, obj=None, **kwargs):
         formset = super().get_formset(request, obj, **kwargs)
@@ -189,9 +246,11 @@ class PlaylistDisplay(HideChangeFormDeleteMixin, TeamScopedAdminMixin, ModelAdmi
         return TemplateResponse(request, 'admin/screens/playlist_tree.html', context)
 
 
-class ScheduleRuleInline(StackedInline):
+class ScheduleRuleInline(ScopedPickerInline, StackedInline):
     model = ScheduleRule
     extra = 0
+    picker_field = 'playlist'
+    parent_fk = 'schedule'
     fieldsets = (
         (None, {
             'description': (
@@ -201,11 +260,6 @@ class ScheduleRuleInline(StackedInline):
             'fields': ('playlist', 'starts', 'occurrences', 'start_time', 'end_time', 'priority'),
         }),
     )
-
-    def formfield_for_foreignkey(self, db_field, request, **kwargs):
-        if db_field.name == 'playlist':
-            kwargs['queryset'] = scope_to_active_team(Playlist.objects.all(), request)
-        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
     class Media:
         # django-recurrence's init script observes #container for new inline rows,
@@ -292,8 +346,14 @@ class SourceDisplay(HideChangeFormDeleteMixin, TeamScopedAdminMixin, ModelAdmin)
             self.exclude = ()
         form_class = super().get_form(request, obj, **kwargs)
         if 'playlists' in form_class.base_fields:
-            form_class.base_fields['playlists'].queryset = scope_to_user_teams(
-                Playlist.objects.all(), request,
+            # Copy first: the declared field is one object shared by every form
+            # class the factory builds, so scoping it in place would leak one
+            # request's queryset into the next.
+            field = copy.deepcopy(form_class.base_fields['playlists'])
+            form_class.base_fields['playlists'] = apply_scoped_choices(
+                field, Playlist, request,
+                obj.playlists.values_list('pk', flat=True) if obj else (),
+                scope=scope_to_user_teams,
             )
         return form_class
 
@@ -323,12 +383,40 @@ INTERSPERSED_FIELDS = ('interspersed_playlist', 'interspersed_rate')
 INTERSPERSED_UNAVAILABLE_FIELD = 'interspersed_unavailable'
 
 
+class ScreenOnlineFilter(admin.SimpleListFilter):
+    """Filter the screens list by the same tick the Online column shows.
+
+    A snapshot, not a saved state: `Screen.online_cutoff` moves with the clock,
+    so the answer is whatever was true when the page was rendered. That is what
+    the operator wants here — "what is dark right now" — but it does mean two
+    loads a minute apart can legitimately differ.
+    """
+
+    title = "online status"
+    parameter_name = "online"
+
+    def lookups(self, request, model_admin):
+        return (('1', "Online"), ('0', "Offline"))
+
+    def queryset(self, request, queryset):
+        if self.value() == '1':
+            return queryset.filter(last_seen__gte=Screen.online_cutoff())
+        if self.value() == '0':
+            return queryset.exclude(last_seen__gte=Screen.online_cutoff())
+        return queryset
+
+
 @admin.register(Screen)
 class ScreenAdmin(TeamScopedAdminMixin, ModelAdmin):
     readonly_fields = ('screen_preview', INTERSPERSED_UNAVAILABLE_FIELD)
     list_display = ('name', 'ip', 'show_online', 'last_seen', 'schedule', 'show_teams')
     search_fields = ('name', 'ip')
-    list_filter = ('schedule',)
+    # RelatedOnly, not a bare 'schedule': the stock related filter lists every
+    # schedule on the system regardless of team, so a user saw — and could
+    # filter by — other teams' schedules, every one of which matched nothing.
+    # Limiting to the values present in this admin's own (team-scoped) queryset
+    # scopes it correctly and drops the dead options at the same time.
+    list_filter = (('schedule', admin.RelatedOnlyFieldListFilter), ScreenOnlineFilter)
     list_select_related = ('schedule',)
     fieldsets = (
         (None, {

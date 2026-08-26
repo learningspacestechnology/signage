@@ -124,3 +124,20 @@ Only superusers can change an object's teams. Open the object and edit its
 An object can belong to several teams at once, which is how genuinely shared
 content is handled — a notice owned by both *Central* and *Library* is visible
 and editable in both.
+
+### What sharing one object implies
+
+A shared object can point at content only one of its teams owns: a schedule owned
+by *Central* and *Library* whose default playlist is a *Library* playlist, a
+shared playlist inheriting from a *Library* parent, or a shared screen with a
+*Library* interspersed playlist.
+
+Members of the other team still see and can save these. The value stays in the
+picker even though it is outside their scope, labelled `(another team: Library)`,
+with a note under the field. The rest of that team's content stays hidden, so the
+only cross-team choice on offer is the one already in use.
+
+The consequence to be aware of when you share something: whoever can edit it can
+also *repoint* it, and the other team's screens change with no notification and
+no trace beyond the admin log. Share an object between teams when both are
+expected to administer it — not merely to let one of them read it.
