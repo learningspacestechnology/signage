@@ -8,7 +8,7 @@ from screens import models
 from screens.team_scope import scope_to_active_team, scope_to_user_teams
 from screens.utils import get_client_ip, get_client_hostname
 from django.utils import timezone
-from advertising.settings import AUTO_MAKE_SCREENS_FOR_NEW_IPS, UNCONFIGURED_SCREEN_MESSAGE
+from django.conf import settings
 
 
 _TICKER_SENTINEL_PLAYLIST_ID = -1
@@ -46,7 +46,7 @@ def get_screen(request):
     if screen:
         return screen
 
-    if AUTO_MAKE_SCREENS_FOR_NEW_IPS:
+    if settings.AUTO_MAKE_SCREENS_FOR_NEW_IPS:
         return models.Screen.objects.create(
             ip=ip,
             name=get_client_hostname(ip),
@@ -61,7 +61,7 @@ def view_unconfigured(request):
     return render(request, 'screens/unconfigured_screen.html', {
         'ip': ip,
         'hostname': get_client_hostname(ip),
-        'message': UNCONFIGURED_SCREEN_MESSAGE,
+        'message': settings.UNCONFIGURED_SCREEN_MESSAGE,
     }, status=404)
 
 

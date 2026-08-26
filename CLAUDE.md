@@ -92,6 +92,13 @@ Key env-driven settings (read in the deploy `settings.py`): `O365_CLIENT_ID`, `O
 - A fresh clone has no `settings.py` at all. `manage.py` catches that and prints the `cp` command.
 - The Docker image is unaffected: its Dockerfile does `ADD docker/advertising/settings.py advertising/.`, creating the file at build time.
 
+**Always read settings through `django.conf.settings`, at the moment you need the value.** Two rules, both learned the hard way:
+
+- **Never `from advertising.settings import SOME_KEY`.** That imports the settings *module*, so the name ignores `DJANGO_SETTINGS_MODULE` and is invisible to `override_settings`. It resolves correctly in production only by the accident that the Dockerfile copies the deploy override onto that exact module. It is why `advertising.screenshot_settings` could not isolate `MAX_IMG_*` and one developer's numbers reached the shipped help screenshots, and why an `@override_settings` in `screens/tests/test_playlist_json.py` sat inert for a year. `room_schedules/views.py:37` shows the correct shape.
+- **Never let a setting reach a model field definition.** Django records the whole field — `help_text` included, though it never touches the schema — in migration state, and an f-string in a class body is evaluated once at import. A per-deployment value baked in there means whoever ran `makemigrations` wrote their own site's value into shared history, and every other site reports a pending migration forever. `format_lazy` does **not** save you: the autodetector resolves the proxy when comparing and the migration writer forces `Promise` to `str`. Compute the text at request time instead — `screens/models/source.py`'s `file_help_text()`, applied in the form's `__init__`, is the pattern to copy.
+
+`advertising/tests/test_migration_state.py` fails, naming the offending field, if the second rule is broken. Run the suite before assuming a new setting is harmless.
+
 Celery broker/backend defaults to `redis://redis:6379/0`.
 
 **`ADMIN_SITE_NAME`** drives the admin name on the login page ("Welcome back to …"), the top-left header on every page, and the logout page. `UNFOLD["SITE_TITLE"]`/`["SITE_HEADER"]` point at the callable `"advertising.admin.site_name"` (resolved lazily at render time), so overriding `ADMIN_SITE_NAME` in any layer takes effect with no need to rebuild the `UNFOLD` dict.

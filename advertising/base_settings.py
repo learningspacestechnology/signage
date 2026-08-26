@@ -406,5 +406,10 @@ AUTHENTICATION_BACKENDS = [
 ]
 LOGIN_URL = '/admin/login/'
 UNCONFIGURED_SCREEN_MESSAGE = ("To get this display set up, please contact your local IT support team and provide the details below.")
-MAX_IMG_WIDTH = 1920
-MAX_IMG_HEIGHT = 1080
+# A hard per-axis reject on upload, not a downscale (`Source.clean`), so
+# orientation matters: these values admit landscape 4K and turn away a portrait
+# 4K image, whose 3840 height exceeds MAX_IMG_HEIGHT. Swap them for a portrait
+# estate. Read through `django.conf.settings` everywhere -- never bind them at
+# import time into a model field, which would put them in migration state.
+MAX_IMG_WIDTH = 3840
+MAX_IMG_HEIGHT = 2160

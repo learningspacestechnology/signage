@@ -14,11 +14,11 @@ class Migration(migrations.Migration):
     # republishes once on the deploy that applies this. 0032 has not shipped
     # either and does the same in the same pass, so it costs nothing extra.
     #
-    # makemigrations also proposed an AlterField on source.file here. That is
-    # the phantom diff in KNOWN_ISSUES.md #11 -- Source.file's help_text is an
-    # f-string over MAX_IMG_WIDTH/MAX_IMG_HEIGHT, which are per-deployment, so
-    # no value is correct in migration state. It has been removed by hand;
-    # do not let it back in.
+    # makemigrations also proposed an AlterField on source.file here, which was
+    # removed by hand: Source.file's help_text was an f-string over the
+    # per-deployment MAX_IMG_WIDTH/MAX_IMG_HEIGHT, so no value was correct in
+    # migration state. That is fixed at source in 0034 -- the dimensions moved to
+    # the form layer -- so the field is now ordinary and safe to migrate.
     operations = [
         migrations.RemoveField(
             model_name="screen",

@@ -416,9 +416,13 @@ removal and the pins themselves. `c80aa01` and `4d9c07d` were taken with issue 9
    containing the change *before* the deploy repo is updated — the same ordering hazard issue 1
    documents for `LOGGING`. Nothing else in the bump touches it, but a beat version change is
    exactly when someone reorganises that dict.
-8. **Fix issue 11 first if you want CI to gate on `makemigrations --check`** — it currently
-   reports a phantom pending migration on every developer machine, which makes it useless as a
-   guard for exactly the kind of model drift a framework bump causes.
+8. **`makemigrations --check` is now a usable guard — lean on it.** It used to report a phantom
+   pending migration on every developer machine; `Source.file`'s `help_text` no longer embeds
+   the per-deployment `MAX_IMG_*` values, so a clean tree is genuinely clean.
+   `advertising/tests/test_migration_state.py` asserts it, which means the suite catches exactly
+   the kind of model drift a framework bump causes. If it starts failing after the bump, read
+   the field names it reports before generating anything — a bump that quietly changes a field's
+   deconstruction wants understanding, not a rubber-stamped migration.
 
 **Checked against the deploy:** `docker/advertising/settings.py` overrides none of `USE_L10N`,
 `DEFAULT_AUTO_FIELD`, `USE_TZ`, `TIME_ZONE`, `CELERY_ENABLE_UTC` or
@@ -443,59 +447,3 @@ room templates still poll it — `room_screen.html:642`, `room_screen_uoe.html:2
 `room_tablet.html:713` — so this is a hot endpoint, not a stale one, and the watch is still
 worth keeping. The 502 itself cannot be reproduced or ruled out from a dev checkout; it needs
 the production nginx log.
-
----
-
-## 11. `makemigrations --check` always reports a phantom pending migration
-
-**Symptom.** `uv run python manage.py makemigrations --check --dry-run` reports pending changes
-on a clean tree, so it cannot be used as a CI guard against model drift. Two operations show up,
-and **only one of them is the phantom this entry is about**:
-
-| Operation | Kind |
-|---|---|
-| `alter_source_file` | the real phantom — no recorded value can ever be correct |
-| `alter_schedulerule_occurrences` | ordinary drift — one `AlterField` retires it for good |
-
-`alter_source_file`'s generated migration differs per developer, so committing it just moves the
-problem. `alter_schedulerule_occurrences` is a plain literal `help_text` on
-`ScheduleRule.occurrences` (`screens/models/schedule_rule.py:22`) that was extended with the
-negative-`BYMONTHDAY` wording — the same monthly-grid behaviour issue 7 item 5 covers — after
-migration `0030` recorded the shorter text
-(`0030_alter_playlist_interspersed_source_and_more.py:95`). Nothing in it varies per site, so
-`makemigrations` and commit is the whole fix. Anyone attempting the CI gate below hits both, but
-only the `Source.file` half needs the work described here.
-
-**Cause.** `Source.file`'s `help_text` is an f-string over `MAX_IMG_WIDTH`/`MAX_IMG_HEIGHT`
-(`screens/models/source.py:36`), so those values are baked into migration state. Migration
-`0019` recorded 1920x1080 from `base_settings`; the dev `settings.py` default is 2160x3840, so
-the autodetector sees a permanent diff.
-
-**These dimensions are deliberately per-deployment, so this is not just a dev-machine quirk.**
-The deploy sets `MAX_IMG_WIDTH = int(os.getenv("MAX_IMG_WIDTH", "1920"))` and both keys are
-documented in `.env.sample:87-88`. Any site that tunes them gets a `help_text` differing from
-migration state as well. Nothing breaks at runtime — `help_text` is not enforced — but no value
-can be "correct" in a migration, which is what makes this unfixable by editing the recorded
-migration.
-
-**A related but separate point about the import.** `screens/models/source.py:6` does
-`from advertising.settings import MAX_IMG_WIDTH, MAX_IMG_HEIGHT`, importing the settings
-*module* rather than going through `django.conf.settings`. In production this still resolves
-correctly, because the Dockerfile copies the deploy override *onto* that exact module
-(`ADD docker/advertising/settings.py advertising/.`), so `advertising.settings` **is** the
-production settings file. What it does break is `DJANGO_SETTINGS_MODULE`: pointing it at any
-other module leaves these names reading `advertising/settings.py` regardless. That is why
-`advertising.screenshot_settings` does not isolate them, and why `makemigrations --check` still
-reports the drift under that module.
-
-**Fix.** Routing through `django.conf.settings` is necessary but not sufficient — the f-string
-is evaluated at class-definition time, so the value would still be baked in. The dimensions have
-to leave migration state altogether: make the `help_text` lazy with
-`django.utils.text.format_lazy`, or drop them from `help_text` and surface them in the form or
-the upload validation message instead. Only then is `makemigrations --check` usable as a CI
-gate.
-
-**Same import style elsewhere, worth auditing in the same pass:** `screens/forms.py:6`,
-`screens/views.py:11`, `screens/utils.py:3` and `advertising/urls.py:22`. None currently
-misbehave, for the same reason as above, but they carry the same `DJANGO_SETTINGS_MODULE`
-blind spot.

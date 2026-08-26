@@ -65,11 +65,12 @@ ENTRA_AUTH_ENABLED = False
 # ---------------------------------------------------------------------------
 # Behaviour you may want to vary while developing
 # ---------------------------------------------------------------------------
-# Upload limits. Note these are read by `screens/models/source.py` at import
-# time, so changing them alters the `Source.file` help text and Django will
-# want to generate a migration for it.
-# MAX_IMG_WIDTH = 1920
-# MAX_IMG_HEIGHT = 1080
+# Upload limits — a hard per-axis reject, not a downscale, so orientation
+# matters: the defaults below admit landscape 4K and turn away portrait 4K.
+# Safe to change freely; they are read through `django.conf.settings` at request
+# time and no longer reach migration state.
+# MAX_IMG_WIDTH = 3840
+# MAX_IMG_HEIGHT = 2160
 
 # Shown in the header, on the login page and on the logout page.
 # ADMIN_SITE_NAME = 'Display Screen Admin'
