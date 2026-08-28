@@ -9,8 +9,10 @@ from django.contrib.auth.decorators import user_passes_test
 from django.contrib.auth.models import User, Group, Permission
 from django.db.models import Count
 from django.http import HttpResponseBadRequest, HttpResponseRedirect
+from django.templatetags.static import static
 from django.urls import path, reverse
 from django.utils import timezone
+from django.views.decorators.http import require_POST
 from unfold.admin import ModelAdmin
 from unfold.decorators import display
 from unfold.forms import AdminPasswordChangeForm, UserChangeForm
@@ -26,6 +28,9 @@ from advertising.middleware import (
 from helpdocs.admin_links import attach_help_links
 from helpdocs.urls import get_help_admin_urls
 from room_schedules.admin import get_o365_admin_urls
+# Pure data, no models — safe to import at module scope, unlike screens.models
+# (which the functions below import lazily, as the rest of this file does).
+from screens.accents import ACCENTS, DEFAULT_ACCENT, light_ramp, swatches
 
 _original_admin_get_urls = admin.site.get_urls
 
@@ -56,12 +61,114 @@ def set_active_team_view(request, team_ref):
     return HttpResponseRedirect(next_url)
 
 
+def accent_slug(request):
+    """The accent palette slug for this request's user.
+
+    Cached on the request because two Unfold callables (`accent_palette` and
+    `accent_stylesheet`) both need it on every admin render, and this would
+    otherwise be two queries per page instead of one.
+    """
+    from screens.models import UserPreference
+
+    cached = getattr(request, '_accent_slug', None)
+    if cached is not None:
+        return cached
+
+    slug = DEFAULT_ACCENT
+    user = getattr(request, 'user', None)
+    if user is not None and user.is_authenticated:
+        slug = (
+            UserPreference.objects
+            .filter(user=user)
+            .values_list('accent', flat=True)
+            .first()
+        ) or DEFAULT_ACCENT
+
+    request._accent_slug = slug
+    return slug
+
+
+def accent_palette(request):
+    """Unfold COLORS["primary"] callable: the user's light-mode ramp.
+
+    Returns a fresh dict every call — Unfold's `_get_colors` rewrites the dict
+    it is handed in place, so sharing the registry's would let one request
+    permanently recolour the admin for everyone else.
+    """
+    return light_ramp(accent_slug(request))
+
+
+def accent_stylesheet(request):
+    """Unfold STYLES callable: the user's dark-mode override stylesheet.
+
+    Unfold uses --color-primary-500 for text on white *and* on near-black, so
+    the single :root ramp above cannot be right in both themes. This sheet
+    re-declares the three dark-background slots under `html.dark`, which
+    out-ranks :root on specificity. See screens/accents.py.
+    """
+    return static(f'screens/css/accent/{accent_slug(request)}.css')
+
+
+def accent_picker_items(request):
+    """Palettes for the accent picker in the sidebar user menu.
+
+    Consumed by the `accent_picker_items` tag in
+    `screens/templatetags/accent_picker.py`, rendered by this project's
+    `templates/unfold/helpers/accent_switch.html`.
+    """
+    if not (request.user.is_authenticated and request.user.is_staff):
+        return []
+
+    active = accent_slug(request)
+    items = []
+    for slug, palette in ACCENTS.items():
+        swatch_light, swatch_dark = swatches(slug)
+        items.append({
+            "slug": slug,
+            "label": palette["label"],
+            "swatch_light": swatch_light,
+            "swatch_dark": swatch_dark,
+            "is_active": slug == active,
+        })
+    return items
+
+
+@require_POST
+@user_passes_test(lambda u: u.is_authenticated and u.is_staff, login_url='/admin/login/')
+def set_accent_view(request):
+    """Store the user's accent choice. Slug arrives in the POST body.
+
+    POST rather than the GET link `set_active_team_view` uses: this writes a
+    database row, so a plain link would be CSRF-able. The slug is in the body
+    rather than the URL so all nine swatches can share one form and one CSRF
+    token inside the menu.
+    """
+    from screens.models import UserPreference
+
+    slug = request.POST.get('accent')
+    if slug not in ACCENTS:
+        return HttpResponseBadRequest("Unknown accent colour.")
+
+    UserPreference.objects.update_or_create(
+        user=request.user,
+        defaults={'accent': slug},
+    )
+
+    next_url = request.META.get('HTTP_REFERER') or '/admin/'
+    return HttpResponseRedirect(next_url)
+
+
 def _patched_admin_get_urls():
     custom = [
         path(
             'set-active-team/<str:team_ref>/',
             set_active_team_view,
             name='set_active_team',
+        ),
+        path(
+            'set-accent/',
+            set_accent_view,
+            name='set_accent',
         ),
     ]
     return (

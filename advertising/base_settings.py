@@ -109,9 +109,25 @@ UNFOLD = {
     "SITE_URL": "/",
     "SHOW_HISTORY": True,
     "SHOW_VIEW_ON_SITE": True,
+    # Per-user accent colour. Unfold resolves a dotted path here by importing it
+    # and calling it with the request, so the palette is chosen per user without
+    # rebuilding this dict — same mechanism as SITE_TITLE above.
+    #
+    # Only the "primary" key is overridden: Unfold deep-merges COLORS per key, so
+    # its "base" and "font" ramps survive. Replacing the whole COLORS value would
+    # drop them. See screens/accents.py and CLAUDE.md, "Admin UI".
+    "COLORS": {"primary": "advertising.admin.accent_palette"},
     # Loaded on every admin page. Lambda because static() needs the app registry,
     # which isn't ready while this module is being imported.
-    "STYLES": [lambda request: static("screens/css/admin_table_links.css")],
+    "STYLES": [
+        lambda request: static("screens/css/admin_table_links.css"),
+        lambda request: static("screens/css/accent_switch.css"),
+        # The chosen accent's dark-mode overrides. COLORS above can only emit one
+        # ramp into :root, but Unfold uses --color-primary-500 for text on white
+        # *and* on near-black, so the dark shades need a second, higher-specificity
+        # source. Dotted path, resolved with the request like the callables above.
+        "advertising.admin.accent_stylesheet",
+    ],
     "SIDEBAR": {
         "show_search": True,
         "show_all_applications": False,

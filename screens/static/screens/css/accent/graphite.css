@@ -1,0 +1,16 @@
+/*
+ * Dark-mode accent overrides: High contrast.
+ *
+ * GENERATED from screens/accents.py - do not hand-edit. Regenerate with
+ * the snippet in screens/tests/test_accent_picker.py, which also fails if
+ * these values drift from the registry.
+ *
+ * Unfold writes the light ramp into :root. This html.dark rule has higher
+ * specificity (0,1,1 vs 0,1,0), so it wins wherever the dark class is set
+ * on <html>, regardless of stylesheet order.
+ */
+html.dark {
+    --color-primary-300: #e2e8f0;
+    --color-primary-400: #cbd5e1;
+    --color-primary-500: #94a3b8;
+}

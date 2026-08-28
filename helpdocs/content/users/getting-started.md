@@ -56,6 +56,31 @@ Work through these in order. Each links to the page that covers it properly.
 5. **[Create a schedule and point a screen at it](help:schedules)** — decide when the
    playlist plays, then attach a screen.
 
+## Making it easier to read
+
+Open the menu at the bottom of the left-hand sidebar — the one with your name on
+it. The top of that menu holds two display settings that are yours alone:
+changing them affects nobody else, and they follow your account rather than the
+browser, so you get the same look on a different machine.
+
+**Light / Dark / System.** *System* follows whatever your computer is set to,
+which is usually what you want. Pick *Light* or *Dark* to override it.
+
+**Accent colour.** The row of coloured dots underneath. This is the colour used
+for links, buttons and highlights throughout {{ config.ADMIN_SITE_NAME }}. The
+one you have selected is ringed.
+
+Every option is checked to meet the WCAG AA contrast standard against both the
+light and the dark background, so none of them is a bad choice for
+readability — pick whichever you find easiest on the eye. **High contrast** is
+the default and the strongest of them, and is the one to try first if text or
+links are hard to pick out.
+
+!!! note
+    If you share a machine with a colleague, you'll each see your own colour
+    once you sign in. The setting is stored against your account, not the
+    computer.
+
 ## Signing out and passwords
 
 - **Sign out** using the menu at the bottom of the left-hand sidebar. You'll get

@@ -1,0 +1,39 @@
+{% load i18n accent_picker %}
+
+{% comment %}
+Accent colour picker, rendered inside the sidebar user menu next to Unfold's
+Light/Dark/System switch. Included from this project's fork of
+unfold/helpers/navigation_user.html.
+
+One form for all nine swatches so there is a single CSRF token; the chosen slug
+rides in the button's value. Plain buttons, no Alpine — the menu's own
+`openUserLinks` state is not involved in making a choice, and the picker keeps
+working with JavaScript disabled.
+
+Styling is in screens/static/screens/css/accent_switch.css rather than Tailwind
+utilities, because Unfold ships a compiled bundle that only contains the classes
+its own templates use.
+{% endcomment %}
+
+{% accent_picker_items as accents %}
+
+{% if accents %}
+    <div class="accent-switch">
+        <div class="accent-switch__label">{% trans "Accent colour" %}</div>
+
+        <form method="post" action="{% url 'admin:set_accent' %}" class="accent-switch__options">
+            {% csrf_token %}
+
+            {% for item in accents %}
+                <button type="submit"
+                        name="accent"
+                        value="{{ item.slug }}"
+                        class="accent-switch__dot"
+                        style="--accent-swatch-light: {{ item.swatch_light }}; --accent-swatch-dark: {{ item.swatch_dark }}"
+                        aria-pressed="{{ item.is_active|yesno:"true,false" }}"
+                        aria-label="{{ item.label }}"
+                        title="{{ item.label }}"></button>
+            {% endfor %}
+        </form>
+    </div>
+{% endif %}
