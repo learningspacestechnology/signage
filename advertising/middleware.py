@@ -30,6 +30,10 @@ _ACTIVE_TEAM_BYPASS_PREFIXES = (
     '/admin/logout/',
     '/admin/password_change/',
     '/admin/set-active-team/',
+    # Personal display preference, unrelated to team scoping. Bypassed so a
+    # staff user with no team memberships — who is served the no-team 403 page
+    # everywhere else — can still change their own accent colour.
+    '/admin/set-accent/',
     '/admin/oauth/',  # Entra ID login + callback run before the user is staff
 )
 

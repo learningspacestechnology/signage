@@ -51,6 +51,7 @@ CONFIG_KEYS = (
     'ENTRA_AUTH_ENABLED',
     'AUTO_MAKE_SCREENS_FOR_NEW_IPS',
     'TIME_ZONE',
+    'SCREEN_PROBE_ENABLED',
 )
 
 #: Derived values that aren't settings in their own right but would otherwise be
@@ -61,6 +62,10 @@ DERIVED_CONFIG_KEYS = (
     'ROOM_CLEANUP_SCHEDULE',
     'ROOM_SYNC_SCHEDULE',
     'SCREEN_OFFLINE_AFTER',
+    'SCREEN_ATTENTION_AFTER',
+    'SCREEN_PING_WINDOW',
+    'SCREEN_CHECK_SCHEDULE',
+    'SCREEN_HISTORY_DAYS',
 )
 
 ALL_CONFIG_KEYS = CONFIG_KEYS + DERIVED_CONFIG_KEYS
@@ -125,7 +130,20 @@ def _schedule_for_task(task_name, default=''):
     return default
 
 
+def _describe_minutes(delta):
+    """"10 minutes" / "one minute" for a timedelta, for use mid-sentence."""
+    minutes = int(delta.total_seconds() // 60)
+    if minutes == 1:
+        return 'one minute'
+    return f'{minutes} minutes'
+
+
 def _derived_config():
+    # Imported here rather than at module scope: helpdocs.rendering is imported
+    # from the registry during app loading, and reaching into screens.models
+    # that early would import models before the app registry is ready.
+    from screens.models.screen import ATTENTION_WINDOW, PING_WINDOW
+
     return {
         'CONTENT_TASK_MINUTES': _schedule_for_task(
             'screens.tasks.cleanup_sources', 'every 5 minutes'),
@@ -137,6 +155,13 @@ def _derived_config():
             'room_schedules.tasks.sync_o365_rooms', 'daily at 02:15'),
         # Screen.online() compares last_seen against now - 1 minute.
         'SCREEN_OFFLINE_AFTER': 'one minute',
+        # The two other status windows, read off the constants themselves so
+        # prose and behaviour cannot drift.
+        'SCREEN_ATTENTION_AFTER': _describe_minutes(ATTENTION_WINDOW),
+        'SCREEN_PING_WINDOW': _describe_minutes(PING_WINDOW),
+        'SCREEN_CHECK_SCHEDULE': _schedule_for_task(
+            'screens.tasks.check_screens', 'every 5 minutes'),
+        'SCREEN_HISTORY_DAYS': getattr(settings, 'SCREEN_STATUS_HISTORY_DAYS', 90),
     }
 
 

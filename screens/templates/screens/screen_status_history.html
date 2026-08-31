@@ -1,0 +1,34 @@
+{% comment %}
+    Recent ScreenStatusEvent rows for one screen, newest first.
+
+    Hand-written against Unfold's own colour tokens rather than composed from
+    arbitrary Tailwind utilities: Unfold ships a compiled bundle containing
+    only the classes its templates use, so a class it does not use may simply
+    not exist. Every class here appears elsewhere in Unfold's own markup.
+
+    The dot carries the same green/amber/red as the dashboard, and the status
+    word is always spelled out beside it, so the state is never conveyed by
+    colour alone.
+
+    A comment tag rather than the {#...#} form, which is single-line only:
+    spread over several lines it stops being a comment and renders as text.
+{% endcomment %}
+<table class="text-sm w-full">
+    <tbody>
+        {% for event in events %}
+            <tr class="border-b border-base-200 dark:border-base-800 last:border-0">
+                <td class="pr-4 py-2 whitespace-nowrap align-top">
+                    <span class="inline-flex items-center gap-2">
+                        <span class="inline-block w-2 h-2 rounded-full shrink-0"
+                              style="background:{% if event.status == 'online' %}#22c55e{% elif event.status == 'attention' %}#f59e0b{% else %}#ef4444{% endif %}"></span>
+                        <span class="text-important font-medium">{{ event.status_label }}</span>
+                    </span>
+                </td>
+                <td class="pr-4 py-2 text-base-500 align-top">{{ event.reason_label|default:"—" }}</td>
+                <td class="py-2 text-base-500 whitespace-nowrap align-top text-right">
+                    {{ event.at }} ({{ event.at|timesince }} ago)
+                </td>
+            </tr>
+        {% endfor %}
+    </tbody>
+</table>

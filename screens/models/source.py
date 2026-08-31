@@ -3,8 +3,7 @@ import hashlib
 
 from PIL import Image
 
-from advertising.settings import MAX_IMG_WIDTH, MAX_IMG_HEIGHT
-
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.dispatch import receiver
@@ -16,6 +15,19 @@ def get_file_path(instance, filename):
     ext = filename.split('.')[-1]
     filename = "%s.%s" % (uuid.uuid4(), ext)
     return filename
+
+
+def file_help_text():
+    """The upload hint, rendered per request rather than stored on the field.
+
+    MAX_IMG_WIDTH/MAX_IMG_HEIGHT are per-deployment, so an f-string in the field
+    definition bakes one site's numbers into migration state -- where no value can
+    be right for everyone, and every other site then reports a permanent pending
+    `AlterField`. `screens/forms.py` applies this in the form's __init__; see the
+    note on migration 0034 and `advertising/tests/test_migration_state.py`.
+    """
+    return (f"resolution of files should be {settings.MAX_IMG_WIDTH}x"
+            f"{settings.MAX_IMG_HEIGHT}, videos must be mp4")
 
 
 class Source(models.Model):
@@ -33,7 +45,10 @@ class Source(models.Model):
     file = models.FileField(upload_to=get_file_path,
                             null=True,
                             blank=True,
-                            help_text=f"resolution of files should be {MAX_IMG_WIDTH}x{MAX_IMG_HEIGHT}, videos must be mp4")
+                            # Deliberately free of MAX_IMG_*: anything settings-derived
+                            # here lands in migration state. `file_help_text()` above
+                            # adds the resolution at form-render time.
+                            help_text="videos must be mp4")
     url = models.URLField(blank=True, verbose_name="Website Address", help_text="only required if website type")
     valid_from = models.DateTimeField(blank=True, null=True, default=None,
                                       help_text="Content is hidden from playback before this date/time. Leave blank for no start limit.")
@@ -71,8 +86,9 @@ class Source(models.Model):
         if self.type == self.IMAGE:
             try:
                 img = Image.open(self.file)
-                if img.width > MAX_IMG_WIDTH or img.height > MAX_IMG_HEIGHT:
-                    raise ValidationError({'file': f"Image resolution must be at most {MAX_IMG_WIDTH}x{MAX_IMG_HEIGHT}"})
+                if img.width > settings.MAX_IMG_WIDTH or img.height > settings.MAX_IMG_HEIGHT:
+                    raise ValidationError({'file': f"Image resolution must be at most "
+                                                   f"{settings.MAX_IMG_WIDTH}x{settings.MAX_IMG_HEIGHT}"})
                 # Cache dimensions to avoid reopening image in pre_save
                 self._cached_img_dimensions = (img.width, img.height)
             except Exception as e:
@@ -92,8 +108,6 @@ class Source(models.Model):
     def playlist_names(self):
         result = set()
         for name in self.playlistentry_set.all().values_list("playlist__name", flat=True):
-            result.add(name)
-        for name in self.playlist_set.values_list("name", flat=True):
             result.add(name)
         return list(result)
 

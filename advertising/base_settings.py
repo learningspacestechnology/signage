@@ -59,6 +59,13 @@ CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'Europe/London'
+# CELERY_TIMEZONE above is what actually pins Beat's clock: Celery.timezone only
+# consults enable_utc when conf.timezone is falsy, so app.timezone is
+# Europe/London either way and crontab entries below mean local civil time
+# regardless of this flag. Kept for parity with upstream and to state the intent
+# explicitly. Its one live effect is moving crontab.to_local() onto celery's
+# mktime-based fallback -- do not read it as the thing selecting the zone.
+CELERY_ENABLE_UTC = False
 
 from celery.schedules import crontab
 
@@ -87,7 +94,30 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'room_schedules.tasks.sync_o365_rooms',
         'schedule': crontab(minute=15, hour=2),
     },
+    'check-screens-every-5-minutes': {
+        'task': 'screens.tasks.check_screens',
+        'schedule': 300.0,
+    },
+    'cleanup-status-events-daily': {
+        'task': 'screens.tasks.cleanup_status_events',
+        'schedule': crontab(minute=30, hour=3),
+    },
 }
+
+# --- Screen reachability probing -------------------------------------------
+# Whether screens.tasks.check_screens pings screens that have stopped checking
+# in. Off by default: it needs `ping` present in the image (the deploy
+# Dockerfile installs iputils-ping) and a network route to the screen subnet,
+# neither of which can be assumed. With it off, a screen's status comes from
+# the heartbeat alone and the "responds to ping" state simply never occurs.
+SCREEN_PROBE_ENABLED = False
+# Seconds to wait for a single echo reply.
+SCREEN_PROBE_TIMEOUT = 1
+# How many screens are pinged at once.
+SCREEN_PROBE_CONCURRENCY = 16
+# How long ScreenStatusEvent rows are kept by cleanup_status_events. Each
+# screen's most recent transition is exempt regardless of age.
+SCREEN_STATUS_HISTORY_DAYS = 90
 
 ADMIN_SITE_NAME = "Display Screen Admin"
 
@@ -102,9 +132,25 @@ UNFOLD = {
     "SITE_URL": "/",
     "SHOW_HISTORY": True,
     "SHOW_VIEW_ON_SITE": True,
+    # Per-user accent colour. Unfold resolves a dotted path here by importing it
+    # and calling it with the request, so the palette is chosen per user without
+    # rebuilding this dict — same mechanism as SITE_TITLE above.
+    #
+    # Only the "primary" key is overridden: Unfold deep-merges COLORS per key, so
+    # its "base" and "font" ramps survive. Replacing the whole COLORS value would
+    # drop them. See screens/accents.py and CLAUDE.md, "Admin UI".
+    "COLORS": {"primary": "advertising.admin.accent_palette"},
     # Loaded on every admin page. Lambda because static() needs the app registry,
     # which isn't ready while this module is being imported.
-    "STYLES": [lambda request: static("screens/css/admin_table_links.css")],
+    "STYLES": [
+        lambda request: static("screens/css/admin_table_links.css"),
+        lambda request: static("screens/css/accent.css"),
+        # The chosen accent's dark-mode overrides. COLORS above can only emit one
+        # ramp into :root, but Unfold uses --color-primary-500 for text on white
+        # *and* on near-black, so the dark shades need a second, higher-specificity
+        # source. Dotted path, resolved with the request like the callables above.
+        "advertising.admin.accent_stylesheet",
+    ],
     "SIDEBAR": {
         "show_search": True,
         "show_all_applications": False,
@@ -236,7 +282,15 @@ UNFOLD = {
                         "title": "Help & Tutorials",
                         "icon": "help",
                         "link": reverse_lazy("admin:help_index"),
-                        "active": lambda request: request.path.startswith("/admin/help/users"),
+                        # `/admin/help/` renders the users audience (see
+                        # helpdocs.views.help_index), and is where this item's
+                        # own link points — so the bare index has to count as
+                        # active, or clicking the entry lands on a page where it
+                        # appears unselected.
+                        "active": lambda request: (
+                            request.path == "/admin/help/"
+                            or request.path.startswith("/admin/help/users")
+                        ),
                         "permission": lambda request: request.user.is_authenticated,
                     },
                     {
@@ -338,7 +392,16 @@ USE_I18N = True
 USE_L10N = True
 
 USE_TZ = True
-DJANGO_CELERY_BEAT_TZ_AWARE=False
+# Beat must agree with USE_TZ. At False, django-celery-beat's ModelEntry writes
+# PeriodicTask.last_run_at as a naive UTC datetime, which Django then reads back
+# as Europe/London -- so "Last Run At" in the admin is an hour early for the
+# whole of BST, every sync warns about a naive datetime, and each schedule
+# reload replays one spurious run.
+DJANGO_CELERY_BEAT_TZ_AWARE = True
+
+# Preserve the legacy AutoField PK type; existing DBs were created before
+# Django 3.2's switch to BigAutoField.
+DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
 
 
 # Static files (CSS, JavaScript, Images)
@@ -390,5 +453,10 @@ AUTHENTICATION_BACKENDS = [
 ]
 LOGIN_URL = '/admin/login/'
 UNCONFIGURED_SCREEN_MESSAGE = ("To get this display set up, please contact your local IT support team and provide the details below.")
-MAX_IMG_WIDTH = 1920
-MAX_IMG_HEIGHT = 1080
+# A hard per-axis reject on upload, not a downscale (`Source.clean`), so
+# orientation matters: these values admit landscape 4K and turn away a portrait
+# 4K image, whose 3840 height exceeds MAX_IMG_HEIGHT. Swap them for a portrait
+# estate. Read through `django.conf.settings` everywhere -- never bind them at
+# import time into a model field, which would put them in migration state.
+MAX_IMG_WIDTH = 3840
+MAX_IMG_HEIGHT = 2160

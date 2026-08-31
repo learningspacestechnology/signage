@@ -39,19 +39,62 @@ seconds, and it returns the playlist currently in force and when that playlist
 was last changed. The device compares that timestamp with what it already has and
 reloads only when something has actually changed.
 
-**Polling this is what sets `last seen`.** Online/offline on the dashboard is
-derived entirely from it: a screen is online if it has polled within the last
-{{ config.SCREEN_OFFLINE_AFTER }}. Nothing else updates that timestamp.
+The timestamp covers more than the playlist itself. It is the newest change
+across the playlist, the playlist's interspersed playlist, the screen's own
+interspersed playlist, and the screen record itself — otherwise editing a logo
+playlist, which is a separate record, would never reach any device. The same
+value is reported by `/api/screen/<id>`, and the two must agree exactly: the
+player compares them as plain strings, so any difference makes it re-fetch on
+every poll.
+
+Because the screen record counts, **any** saved change to a screen moves the
+timestamp — including changes that don't affect what plays, such as a rename or
+an IP correction. That display reloads and starts its playlist again from the
+first item. Polling itself does not: writing `last seen` is deliberately kept
+off this timestamp, or every display would restart once a minute.
+
+**Polling this is what sets `last seen`.** A screen is **Online** if it has
+polled within the last {{ config.SCREEN_OFFLINE_AFTER }}. Nothing else updates
+that timestamp — not the screen page, not `/api/screen`, not `/playlist/<id>`.
+Only the heartbeat.
+
+Since a screen with no schedule yet is still polling perfectly happily, it is
+stamped too, and reads online rather than dark while it waits to be configured.
+What it is *told* is unchanged: an unconfigured response.
 
 Consequences worth remembering:
 
-- A screen that shows offline is not polling. The content configuration is
+- A screen that is not online is not polling. The content configuration is
   irrelevant to that symptom.
 - A screen that is online but showing stale content *is* polling, so look at what
   the endpoint returns rather than at the network.
 - Opening a screen's URL in your own browser makes it poll, and therefore marks
   that screen as seen. Don't be surprised when a screen you were investigating
   goes green.
+
+## Reachability, the other signal
+
+The heartbeat answers one question — *is the player polling?* — and on its own it
+cannot tell a device that is switched off from one that is powered up with a dead
+browser. Both simply stop polling.
+
+So there is a second, entirely independent signal: the system pings screens that
+have stopped reporting. The two together give the three states in the admin, and
+the gap between them is the diagnosis.
+
+| `last seen` | Ping | Status | Reading |
+|---|---|---|---|
+| Recent | not asked | **Online** | Nothing to do |
+| Stale | answers | **Needs attention** | Box is alive, its software isn't |
+| Stale, but only just | not asked | **Needs attention** | Missed a poll; wait and look again |
+| Stale | no answer | **Offline** | Device or network |
+| Stale | not asked | **Offline** | Probing is off, so nothing distinguishes the two above |
+
+Reachability is described in full on
+[Screen reachability checks](help:screen-reachability). The important thing here
+is that it never writes `last seen` — the two signals are stored separately and
+combined only when the status is worked out, so a ping can never make a screen
+look like it is reporting when it isn't.
 
 ## Screens with a ticker
 

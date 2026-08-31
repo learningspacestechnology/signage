@@ -28,12 +28,52 @@ A rule says "show *this playlist* on *these days* between *these times*".
    something that should work immediately, or a future date to set it up in
    advance.
 4. Set **Occurrences** — which days it applies to, as a repeating pattern
-   (for example, every Monday and Wednesday).
+   (for example, every Monday and Wednesday). Pick the frequency first, then the
+   days it applies to — see [Finishing the pattern](#finishing-the-pattern).
 5. Set **Start time** and **End time**.
 6. Set a **Priority** — see below.
 7. Save.
 
 ![Setting up a schedule rule](screenshot:schedule-rule)
+
+### Finishing the pattern
+
+Choosing a frequency is only half of it. **Weekly** needs at least one day of the
+week; **Monthly** needs at least one date, or a weekday position such as *first
+Monday*; **Yearly** needs a month, and a date or weekday position inside it.
+**Daily** needs nothing further — "every day" is already complete.
+
+Leave one of those unfinished and the rule can't be saved. It would otherwise
+have no day to run on, and would sit in the list looking configured while never
+playing anything.
+
+!!! note "Counting back from the end of the month"
+    In the monthly grid, the four cells after 31 are negative: `-1`, `-2`, `-3`,
+    `-4`. They count back from the **end** of the month, so `-1` is the last day
+    whether that month has 28, 29, 30 or 31 days.
+
+    That's the only way to say "the last day of the month". Picking `31` would
+    skip every month shorter than 31 days — including February every year.
+
+### Which clock the times are in
+
+**Start time** and **End time** are the clock on the wall — {{ config.TIME_ZONE }}
+— not UTC, and not the time zone of whoever is typing them in. A rule set to
+`09:00`–`17:00` starts at nine in the morning as read off a local clock.
+
+They follow the clocks. When British Summer Time starts and ends, a `09:00` rule
+still starts at nine; nothing needs re-entering and nothing shifts by an hour.
+
+There are two edge cases, on the two nights the clocks change. Both follow from
+reading the times as wall-clock times:
+
+- **Clocks go back** (October). 01:00–02:00 happens twice, so a rule covering any
+  part of that hour is on air for two hours instead of one.
+- **Clocks go forward** (March). 01:00–02:00 never happens, so a rule confined to
+  that hour does not run at all that night.
+
+Neither is worth working around — both are what "01:30" honestly means on those
+nights. Rules that don't touch the small hours are unaffected.
 
 ### End time and midnight
 
@@ -42,6 +82,19 @@ convention, a rule ending at midnight would end immediately at the start of the
 day instead.
 
 For a rule that should run all day, use `00:00` to `00:00`.
+
+### Rules that run past midnight
+
+Set **End time** *earlier* than **Start time** for a rule that runs overnight —
+`22:00` to `06:00` covers ten in the evening through six the next morning.
+
+The days you pick under **Occurrences** are the days the rule *starts* on; it
+carries on into the following morning. A rule set for Tuesdays at `23:00`–`01:00`
+is still playing at half past midnight on Wednesday.
+
+This is also why `00:00` is treated as end-of-day rather than start-of-day:
+without that, `09:00`–`00:00` would look like an overnight rule instead of "nine
+until the end of the day".
 
 ## Priority: lowest number wins
 

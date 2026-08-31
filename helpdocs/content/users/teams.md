@@ -41,6 +41,29 @@ else's team.
 If you need something to be shared between two teams, ask an administrator —
 only administrators can put one item into several teams at once.
 
+## Items shared with another team
+
+An administrator can put one item into two teams so both can work on it. A shared
+schedule might use the other team's playlist as its default; a shared playlist
+might inherit from theirs or hold their content.
+
+Where that happens, the choice is shown with the owning team in brackets, and the
+field says so underneath:
+
+```
+Christmas message (another team: Library)
+```
+
+Leave it as it is and the rest of the form saves normally — you don't have to
+touch it to edit the name, the times, or anything else. What you can't do is pick
+something *different* of theirs: only the item already in use is offered, and the
+rest of their content stays out of the list.
+
+!!! warning "Changing one of these changes their screens too"
+    A choice marked with another team's name is in use on that team's screens.
+    Replace it with one of your own — or untick it — and their displays change
+    straight away, without them being told. Check with them first.
+
 ## Common questions
 
 **A colleague made a playlist and I can't see it.**
@@ -50,6 +73,11 @@ whether you should be a member of it.
 **I switched teams and my screens vanished.**
 They belong to the other team. Switch back using the team name at the top of the
 page.
+
+**A choice in a form is marked "another team".**
+The item belongs to a team you're not working in, and it's offered only because
+this shared item already uses it. Leave it alone unless you've agreed the change
+with that team — see *Items shared with another team* above.
 
 **I'm only in one team and something is still missing.**
 Team scoping isn't the cause then — see

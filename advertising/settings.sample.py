@@ -65,11 +65,12 @@ ENTRA_AUTH_ENABLED = False
 # ---------------------------------------------------------------------------
 # Behaviour you may want to vary while developing
 # ---------------------------------------------------------------------------
-# Upload limits. Note these are read by `screens/models/source.py` at import
-# time, so changing them alters the `Source.file` help text and Django will
-# want to generate a migration for it.
-# MAX_IMG_WIDTH = 1920
-# MAX_IMG_HEIGHT = 1080
+# Upload limits — a hard per-axis reject, not a downscale, so orientation
+# matters: the defaults below admit landscape 4K and turn away portrait 4K.
+# Safe to change freely; they are read through `django.conf.settings` at request
+# time and no longer reach migration state.
+# MAX_IMG_WIDTH = 3840
+# MAX_IMG_HEIGHT = 2160
 
 # Shown in the header, on the login page and on the logout page.
 # ADMIN_SITE_NAME = 'Display Screen Admin'
@@ -83,3 +84,15 @@ ENTRA_AUTH_ENABLED = False
 # Create a Screen automatically for any unrecognised IP. Convenient during a
 # bulk rollout, noisy the rest of the time.
 # AUTO_MAKE_SCREENS_FOR_NEW_IPS = False
+
+# Ping screens that have stopped checking in, so a device that is alive but
+# whose player has died shows amber rather than red. Needs `ping` on PATH and a
+# route to the screens; a dev container usually has neither, so this is mostly
+# worth turning on to exercise the code against an IP you know answers.
+# SCREEN_PROBE_ENABLED = False
+# SCREEN_PROBE_TIMEOUT = 1
+# SCREEN_PROBE_CONCURRENCY = 16
+
+# How long screen status history is kept. Each screen's latest transition is
+# always kept, however old.
+# SCREEN_STATUS_HISTORY_DAYS = 90

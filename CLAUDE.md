@@ -53,7 +53,7 @@ Screen → Schedule → ScheduleRule → Playlist → PlaylistEntry → Source (
 
 - A **Screen** (physical display) points to a **Schedule**, which picks the active **Playlist** based on time-of-day rules (**ScheduleRule** with recurrence).
 - **Playlists** support inheritance via `PlaylistRelation` (M2M self-reference): child playlists can inherit `Source` items from parent playlists.
-- Both **Screen** and **Playlist** have an optional `interspersed_source` that is shown between regular entries.
+- Both **Screen** and **Playlist** have an optional `interspersed_playlist` plus an `interspersed_rate`: that playlist's items are mixed in after every `rate` regular items. The player composes them base → playlist-level → screen-level, so the screen's rate counts items that already include the playlist's insertions. Ticker screens cannot play the screen-level stream — see `KNOWN_ISSUES.md`, and `ScreenAdmin` hides the fields while `ticker_enabled` is set.
 - **Sources** have `valid_from` / `expires_at` fields; `screens.tasks` runs periodic Celery tasks every 5 minutes to clean up expired sources and update playlists.
 
 ### Settings
@@ -92,6 +92,13 @@ Key env-driven settings (read in the deploy `settings.py`): `O365_CLIENT_ID`, `O
 - A fresh clone has no `settings.py` at all. `manage.py` catches that and prints the `cp` command.
 - The Docker image is unaffected: its Dockerfile does `ADD docker/advertising/settings.py advertising/.`, creating the file at build time.
 
+**Always read settings through `django.conf.settings`, at the moment you need the value.** Two rules, both learned the hard way:
+
+- **Never `from advertising.settings import SOME_KEY`.** That imports the settings *module*, so the name ignores `DJANGO_SETTINGS_MODULE` and is invisible to `override_settings`. It resolves correctly in production only by the accident that the Dockerfile copies the deploy override onto that exact module. It is why `advertising.screenshot_settings` could not isolate `MAX_IMG_*` and one developer's numbers reached the shipped help screenshots, and why an `@override_settings` in `screens/tests/test_playlist_json.py` sat inert for a year. `room_schedules/views.py:37` shows the correct shape.
+- **Never let a setting reach a model field definition.** Django records the whole field — `help_text` included, though it never touches the schema — in migration state, and an f-string in a class body is evaluated once at import. A per-deployment value baked in there means whoever ran `makemigrations` wrote their own site's value into shared history, and every other site reports a pending migration forever. `format_lazy` does **not** save you: the autodetector resolves the proxy when comparing and the migration writer forces `Promise` to `str`. Compute the text at request time instead — `screens/models/source.py`'s `file_help_text()`, applied in the form's `__init__`, is the pattern to copy.
+
+`advertising/tests/test_migration_state.py` fails, naming the offending field, if the second rule is broken. Run the suite before assuming a new setting is harmless.
+
 Celery broker/backend defaults to `redis://redis:6379/0`.
 
 **`ADMIN_SITE_NAME`** drives the admin name on the login page ("Welcome back to …"), the top-left header on every page, and the logout page. `UNFOLD["SITE_TITLE"]`/`["SITE_HEADER"]` point at the callable `"advertising.admin.site_name"` (resolved lazily at render time), so overriding `ADMIN_SITE_NAME` in any layer takes effect with no need to rebuild the `UNFOLD` dict.
@@ -120,8 +127,45 @@ The admin uses two orthogonal authorisation layers — keep them separate.
 Uses **django-unfold** for styling.
 
 - `advertising/base_settings.py` holds the `UNFOLD` dict: sidebar navigation (each item with its own `permission` lambda), the dashboard callback, and the environment label.
-- `advertising/admin.py` carries the cross-cutting customisation: `dashboard_callback`, the team switcher, `set_active_team_view`, and a monkey-patch of `admin.site.get_urls` that injects the help, O365 and set-active-team URLs. It also unregisters and re-registers `User`, `Group` and the celery-beat/results models so they pick up Unfold styling — **so anything that walks `admin.site` must run after this module is imported**, which is why `attach_help_links()` is its last statement.
+- `advertising/admin.py` carries the cross-cutting customisation: `dashboard_callback`, the team switcher, `set_active_team_view`, the accent-colour callables and `set_accent_view`, and a monkey-patch of `admin.site.get_urls` that injects the help, O365, set-active-team and set-accent URLs. It also unregisters and re-registers `User`, `Group` and the celery-beat/results models so they pick up Unfold styling — **so anything that walks `admin.site` must run after this module is imported**, which is why `attach_help_links()` is its last statement.
 - Screen/Source/Playlist/Schedule/Team admin logic lives in `screens/admin.py`; Building/Room/RoomGroup and the custom O365 pages in `room_schedules/admin.py`.
+
+#### Accent colours, and what couples us to django-unfold
+
+Each user picks an admin accent colour from the sidebar user menu; the choice is stored on `screens.models.UserPreference` and the palettes live in `screens/accents.py`. The mechanism leans on several **django-unfold internals that are not public API**, and every one of them fails *silently and cosmetically* — a wrong colour, an unreadable link, a vanished picker — with nothing in the deploy erroring. The analysis below was done against **django-unfold 0.82.0** (pinned in `pyproject.toml`); re-check it on every bump.
+
+**Forked vendor templates.** Three Unfold helpers are copied into `templates/unfold/helpers/`, which means Unfold's own changes to them are silently ignored:
+
+| File | Why it is forked |
+|---|---|
+| `navigation_user.html` | one added `{% include %}` for `accent_switch.html` |
+| `userlinks.html` | wraps the environment label in the team picker |
+| `unauthenticated_header.html` | drops "Return to site" from the login page |
+
+On an unfold upgrade, **re-copy each from the new vendor version and re-apply the project's change** rather than assuming the old copy still fits. `navigation_user.html` is deliberately kept to a one-line diff so this stays cheap, and a test asserts it has not drifted further.
+
+**Why not Unfold's `extra_userlinks` block**, which exists for exactly this purpose: it is filled via `{% block extra_userlinks %}`, reachable only by overriding a template in the inheritance chain. `admin/base_site.html` looks like the hook, but `templates/admin/index.html` extends `admin/base.html` **directly**, so a `base_site.html` override silently misses the dashboard. Covering everything would mean forking Unfold's 48-line `admin/base.html` — a bigger fork than the file we actually want to touch.
+
+**Why each palette needs two ramps.** Unfold uses `--color-primary-500` for text on white (`text-primary-500`) *and* on near-black (`dark:text-primary-500`). No single mid-tone clears 4.5:1 against both, so its stock purple misses on both sides (4.12:1 and 4.30:1) — that is the original accessibility complaint, and it is structural, not a bad hue. Hence two seams:
+
+- **Light ramp** — `UNFOLD["COLORS"]["primary"]` points at `advertising.admin.accent_palette`, resolved per request and emitted into `:root`.
+- **Dark overrides** — `advertising.admin.accent_stylesheet` adds `screens/static/screens/css/accent/<slug>.css`, whose `html.dark` selector (specificity 0,1,1) out-ranks that `:root` (0,1,0).
+
+Those CSS files are **generated from `ACCENTS`** — do not hand-edit them; the test suite fails if they drift.
+
+**Unfold signals state with hue, which neutral palettes do not have.** The selected sidebar item is marked `bg-base-100 font-semibold text-primary-600` (`unfold/helpers/app_list.html`) — the background is ~1.05:1 against the sidebar, so selection rides almost entirely on the text being *purple*. Under a neutral accent it vanishes: graphite's `primary-600` is ~1.3:1 against ordinary nav text, leaving font-weight as the only cue. `accent.css` restores it with a left bar plus a stronger row background, which is hue-independent and so also stops selection being conveyed by colour alone (WCAG 1.4.1). **If another piece of chrome looks ambiguous under graphite, suspect the same cause** — find what unfold styles with `text-primary-*` and no other signal.
+
+**The private behaviours depended on**, i.e. the list to re-check on upgrade:
+
+- `_get_value` resolves a dotted-path string **and calls it with the request**. Pre-existing coupling — `SITE_TITLE`/`ENVIRONMENT` already rely on it — that the accent work widens to `COLORS` and `STYLES`.
+- `get_config()` deep-merges per key, so `{"COLORS": {"primary": …}}` keeps Unfold's `base` and `font` ramps. Replacing the whole `COLORS` value would drop them.
+- `_get_colors` **mutates the dict it returns**, so `accent_palette` must return a fresh `dict(...)`. Sharing the registry's dict would let one request permanently recolour the admin for everyone.
+- Dark mode is **class-based** (`html.dark`, set by Alpine on `<html>`). A move to `@media (prefers-color-scheme)` would silently disable every dark override.
+- Colours are emitted into `<style id="unfold-theme-colors">` in `unfold/layouts/skeleton.html`.
+
+Unfold ships a **compiled** Tailwind bundle containing only the classes its own templates use, so an arbitrary utility class may simply not exist. Project admin CSS is therefore hand-written against Unfold's custom properties (`accent_switch.css`, `admin_table_links.css`, `recurrence_unfold.css`) rather than composed from utilities.
+
+`uv run python manage.py test screens.tests.test_accent_picker` is the post-upgrade smoke test: it asserts contrast for every palette, checks the rendered page rather than the config, and carries a `UnfoldCouplingTests` class whose whole job is to fail loudly when one of the assumptions above stops holding.
 
 ### Help documentation
 

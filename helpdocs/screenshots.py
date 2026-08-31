@@ -134,6 +134,14 @@ SHOTS = (
 
     # ---- Screens ---------------------------------------------------------
     Shot(
+        name='screen-list',
+        # The demo data deliberately seeds one screen of each status, so this
+        # shot shows all three badges and their reasons rather than a
+        # two-colour version of a three-colour feature.
+        path='/admin/screens/screen/',
+        wait_for='#changelist',
+    ),
+    Shot(
         name='screen-form',
         path='/admin/screens/screen/{screen_id}/change/',
         wait_for=FORM,
@@ -141,7 +149,10 @@ SHOTS = (
     ),
     Shot(
         name='ticker-fieldset',
-        path='/admin/screens/screen/{screen_id}/change/',
+        # The ticker screen, not the one screen-form uses: a screen with the
+        # ticker on hides its interspersed fields, so the two shots need
+        # different screens to each show what they are documenting.
+        path='/admin/screens/screen/{ticker_screen_id}/change/',
         as_user=ADMIN,
         wait_for=FORM,
         # The ticker fieldset ships collapsed. Depending on the Unfold version

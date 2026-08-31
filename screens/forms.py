@@ -3,11 +3,26 @@ from django import forms
 from django.core.exceptions import ValidationError
 from django.forms import ModelForm, FileField
 from unfold.widgets import UnfoldAdminImageFieldWidget
-from advertising.settings import MAX_IMG_WIDTH, MAX_IMG_HEIGHT
+from django.conf import settings
+from screens.models.source import file_help_text
+from screens.team_scope import TeamLabelledModelMultipleChoiceField
 
 
 class PlaylistAssigningSourceForm(ModelForm):
-    playlists = forms.ModelMultipleChoiceField(label="Playlists", queryset=Playlist.objects.all(), widget=forms.CheckboxSelectMultiple, required=False)
+    # Labelled rather than plain, so SourceDisplay.get_form can keep the
+    # playlists this source is already in ticked even when they belong to
+    # another team -- save() below does .set(), so an unticked box silently
+    # removes the source from that playlist. See screens.team_scope.
+    playlists = TeamLabelledModelMultipleChoiceField(label="Playlists", queryset=Playlist.objects.all(), widget=forms.CheckboxSelectMultiple, required=False)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Applied here rather than on the model field: MAX_IMG_* is per-deployment,
+        # and anything settings-derived in the field definition ends up in migration
+        # state. Guarded because SourceDisplay.get_form excludes `file` on the bulk
+        # branch, which SourceBulkCreateForm below inherits.
+        if "file" in self.fields:
+            self.fields["file"].help_text = file_help_text()
 
     def save(self, commit=True):
         if self.errors:
@@ -67,7 +82,17 @@ class MultiFileField(FileField):
 
 
 class SourceBulkCreateForm(PlaylistAssigningSourceForm):
-    files = MultiFileField(help_text=f"Upload one type of file at a time. Images must be at most {MAX_IMG_WIDTH}x{MAX_IMG_HEIGHT}; videos must be .mp4.")
+    files = MultiFileField()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Same reason as the parent's `file` hint: read the dimensions per request,
+        # not once at import. A class-body f-string would freeze whichever settings
+        # module happened to load first.
+        self.fields["files"].help_text = (
+            f"Upload one type of file at a time. Images must be at most "
+            f"{settings.MAX_IMG_WIDTH}x{settings.MAX_IMG_HEIGHT}; videos must be .mp4."
+        )
 
     def is_valid(self):
         """Return True if the form has no errors, or False otherwise."""

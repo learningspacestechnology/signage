@@ -1,0 +1,129 @@
+/*
+ * Everything that makes the user-selectable accent colour work in the admin
+ * chrome. Two sections: the picker itself, and the selected-sidebar-item fix
+ * the picker made necessary.
+ *
+ * Hand-written rather than Tailwind utility classes: Unfold ships a *compiled*
+ * Tailwind bundle containing only the classes its own templates use, so an
+ * arbitrary utility (`ring-2`, `dark:hidden`, `size-5`…) may simply not exist
+ * in the CSS. Everything here is plain CSS over Unfold's custom properties,
+ * which is also how admin_table_links.css and recurrence_unfold.css work.
+ *
+ * Per-palette dark-mode overrides live alongside in `accent/<slug>.css`.
+ */
+
+/* ---------------------------------------------------------------------------
+ * Selected sidebar item
+ *
+ * Unfold marks the active nav entry with `bg-base-100 font-semibold
+ * text-primary-600` (unfold/helpers/app_list.html). The background is a
+ * near-invisible 1.05:1 against the sidebar, so selection is carried almost
+ * entirely by the *hue* of the text — which works for a purple accent and
+ * collapses for a neutral one: graphite's primary-600 (#334155) is ~1.3:1
+ * against the ordinary nav text colour, leaving font-weight as the only cue.
+ *
+ * A left bar in the accent plus a stronger background restores the signal
+ * without depending on hue, so every palette reads the same. This also stops
+ * selection being communicated by colour alone (WCAG 1.4.1).
+ * ------------------------------------------------------------------------- */
+
+#nav-sidebar-inner a.active {
+    background-color: var(--color-base-200);
+    box-shadow: inset 3px 0 0 0 var(--color-primary-600);
+}
+
+html.dark #nav-sidebar-inner a.active {
+    background-color: rgb(255 255 255 / 0.1);
+    box-shadow: inset 3px 0 0 0 var(--color-primary-500);
+}
+
+/* ---------------------------------------------------------------------------
+ * Accent picker (templates/unfold/helpers/accent_switch.html)
+ *
+ * Chrome deliberately mirrors unfold/helpers/theme_switch.html so the accent
+ * row and the Light/Dark/System row read as one settings block.
+ * ------------------------------------------------------------------------- */
+
+.accent-switch {
+    border-bottom: 1px solid var(--color-base-200);
+    margin-bottom: 0.25rem;
+    padding: 0.125rem 0.75rem 0.5rem;
+}
+
+html.dark .accent-switch {
+    border-bottom-color: var(--color-base-700);
+}
+
+.accent-switch__label {
+    color: var(--color-font-subtle-light);
+    font-size: 0.6875rem;
+    letter-spacing: 0.02em;
+    padding: 0.25rem 0;
+    text-transform: uppercase;
+}
+
+html.dark .accent-switch__label {
+    color: var(--color-font-subtle-dark);
+}
+
+/*
+ * A fixed grid rather than a wrapping flex row. The menu spans the sidebar, so
+ * the available width is not ours to predict; letting nine dots wrap freely
+ * orphans the last one on a row of its own. Five per row is deliberate at any
+ * width, and stays so if a palette is added or removed.
+ */
+.accent-switch__options {
+    display: grid;
+    gap: 0.375rem;
+    grid-template-columns: repeat(5, 1.375rem);
+    justify-content: start;
+    margin: 0;
+    padding: 0;
+}
+
+.accent-switch__dot {
+    background-color: var(--accent-swatch-light);
+    border: 2px solid transparent;
+    border-radius: 9999px;
+    /* Explicit: the selected-state border must not change the dot's size. */
+    box-sizing: border-box;
+    box-shadow: 0 0 0 1px rgb(0 0 0 / 0.12);
+    cursor: pointer;
+    height: 1.375rem;
+    padding: 0;
+    transition: transform 0.1s ease-in-out;
+    width: 1.375rem;
+}
+
+html.dark .accent-switch__dot {
+    background-color: var(--accent-swatch-dark);
+    box-shadow: 0 0 0 1px rgb(255 255 255 / 0.18);
+}
+
+.accent-switch__dot:hover {
+    transform: scale(1.12);
+}
+
+/*
+ * The selected swatch is marked by a ring, not by colour alone — the whole row
+ * is colours, so colour could not signal selection here. `aria-pressed` in the
+ * template carries the same fact to assistive tech.
+ */
+.accent-switch__dot[aria-pressed="true"] {
+    border-color: var(--color-base-50);
+    box-shadow: 0 0 0 2px var(--color-base-500);
+}
+
+html.dark .accent-switch__dot[aria-pressed="true"] {
+    border-color: var(--color-base-800);
+    box-shadow: 0 0 0 2px var(--color-base-300);
+}
+
+.accent-switch__dot:focus-visible {
+    outline: 2px solid var(--color-base-900);
+    outline-offset: 2px;
+}
+
+html.dark .accent-switch__dot:focus-visible {
+    outline-color: var(--color-base-100);
+}

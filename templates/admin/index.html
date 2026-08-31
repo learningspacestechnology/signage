@@ -47,9 +47,9 @@
 
             {# ---- Charts ------------------------------------------------ #}
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {# Screens online vs offline #}
+                {# Screens by status #}
                 <div class="bg-white flex flex-col p-6 rounded-default shadow-xs border border-base-200 dark:bg-base-900 dark:border-base-800">
-                    <h2 class="font-semibold text-[15px] text-important mb-4">{% translate "Screens online vs offline" %}</h2>
+                    <h2 class="font-semibold text-[15px] text-important mb-4">{% translate "Screens by status" %}</h2>
                     {% if screens_total %}
                         <div class="flex flex-row items-center gap-6">
                             <div class="relative w-40 shrink-0">
@@ -60,6 +60,11 @@
                                     <span class="inline-block w-3 h-3 rounded-full" style="background:#22c55e"></span>
                                     <span class="text-important font-semibold">{{ screens_online }}</span>
                                     <span class="text-base-500">{% translate "online" %}</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span class="inline-block w-3 h-3 rounded-full" style="background:#f59e0b"></span>
+                                    <span class="text-important font-semibold">{{ screens_attention }}</span>
+                                    <span class="text-base-500">{% translate "need attention" %}</span>
                                 </div>
                                 <div class="flex items-center gap-2">
                                     <span class="inline-block w-3 h-3 rounded-full" style="background:#ef4444"></span>
@@ -118,17 +123,37 @@
                 </ol>
             </div>
 
-            {# ---- Offline screens watchlist ----------------------------- #}
+            {# ---- Screens needing attention ----------------------------- #}
+            {% comment %}
+                Amber before red: a screen dark for three days is a known
+                quantity, while one that answers ping but stopped reporting is
+                a new and usually fixable fault. The icon differs as well as
+                the colour, and the reason is spelled out, so the distinction
+                does not rest on hue alone.
+
+                A comment tag rather than the {#...#} form, which is
+                single-line only: spread over several lines it stops being a
+                comment at all and renders as body text on the dashboard.
+            {% endcomment %}
             <div class="bg-white flex flex-col p-6 rounded-default shadow-xs border border-base-200 dark:bg-base-900 dark:border-base-800">
-                <h2 class="font-semibold text-[15px] text-important mb-4">{% translate "Offline screens" %}</h2>
-                {% if offline_screens %}
+                <h2 class="font-semibold text-[15px] text-important mb-4">{% translate "Screens needing attention" %}</h2>
+                {% if attention_screens %}
                     <ul class="flex flex-col divide-y divide-base-200 dark:divide-base-800">
-                        {% for s in offline_screens %}
+                        {% for s in attention_screens %}
                             <li class="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
-                                <span class="material-symbols-outlined text-red-500 text-xl">tv_off</span>
+                                {% if s.status == "attention" %}
+                                    <span class="material-symbols-outlined text-amber-500 text-xl">warning</span>
+                                {% else %}
+                                    <span class="material-symbols-outlined text-red-500 text-xl">tv_off</span>
+                                {% endif %}
                                 <a href="{{ s.url }}" class="text-important font-medium hover:underline">{{ s.name }}</a>
-                                <span class="ml-auto text-base-500 text-sm">
-                                    {% blocktranslate with since=s.last_seen|timesince %}last seen {{ since }} ago{% endblocktranslate %}
+                                <span class="ml-auto text-base-500 text-sm text-right">
+                                    {{ s.reason }}
+                                    {% if s.since %}
+                                        · {% blocktranslate with since=s.since|timesince %}since {{ since }} ago{% endblocktranslate %}
+                                    {% else %}
+                                        · {% blocktranslate with since=s.last_seen|timesince %}last seen {{ since }} ago{% endblocktranslate %}
+                                    {% endif %}
                                 </span>
                             </li>
                         {% endfor %}

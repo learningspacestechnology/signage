@@ -1,5 +1,4 @@
 import json
-from datetime import timedelta
 
 from django.conf import settings
 from django.contrib import admin
@@ -9,8 +8,9 @@ from django.contrib.auth.decorators import user_passes_test
 from django.contrib.auth.models import User, Group, Permission
 from django.db.models import Count
 from django.http import HttpResponseBadRequest, HttpResponseRedirect
+from django.templatetags.static import static
 from django.urls import path, reverse
-from django.utils import timezone
+from django.views.decorators.http import require_POST
 from unfold.admin import ModelAdmin
 from unfold.decorators import display
 from unfold.forms import AdminPasswordChangeForm, UserChangeForm
@@ -26,6 +26,9 @@ from advertising.middleware import (
 from helpdocs.admin_links import attach_help_links
 from helpdocs.urls import get_help_admin_urls
 from room_schedules.admin import get_o365_admin_urls
+# Pure data, no models — safe to import at module scope, unlike screens.models
+# (which the functions below import lazily, as the rest of this file does).
+from screens.accents import ACCENTS, DEFAULT_ACCENT, light_ramp, swatches
 
 _original_admin_get_urls = admin.site.get_urls
 
@@ -56,12 +59,114 @@ def set_active_team_view(request, team_ref):
     return HttpResponseRedirect(next_url)
 
 
+def accent_slug(request):
+    """The accent palette slug for this request's user.
+
+    Cached on the request because two Unfold callables (`accent_palette` and
+    `accent_stylesheet`) both need it on every admin render, and this would
+    otherwise be two queries per page instead of one.
+    """
+    from screens.models import UserPreference
+
+    cached = getattr(request, '_accent_slug', None)
+    if cached is not None:
+        return cached
+
+    slug = DEFAULT_ACCENT
+    user = getattr(request, 'user', None)
+    if user is not None and user.is_authenticated:
+        slug = (
+            UserPreference.objects
+            .filter(user=user)
+            .values_list('accent', flat=True)
+            .first()
+        ) or DEFAULT_ACCENT
+
+    request._accent_slug = slug
+    return slug
+
+
+def accent_palette(request):
+    """Unfold COLORS["primary"] callable: the user's light-mode ramp.
+
+    Returns a fresh dict every call — Unfold's `_get_colors` rewrites the dict
+    it is handed in place, so sharing the registry's would let one request
+    permanently recolour the admin for everyone else.
+    """
+    return light_ramp(accent_slug(request))
+
+
+def accent_stylesheet(request):
+    """Unfold STYLES callable: the user's dark-mode override stylesheet.
+
+    Unfold uses --color-primary-500 for text on white *and* on near-black, so
+    the single :root ramp above cannot be right in both themes. This sheet
+    re-declares the three dark-background slots under `html.dark`, which
+    out-ranks :root on specificity. See screens/accents.py.
+    """
+    return static(f'screens/css/accent/{accent_slug(request)}.css')
+
+
+def accent_picker_items(request):
+    """Palettes for the accent picker in the sidebar user menu.
+
+    Consumed by the `accent_picker_items` tag in
+    `screens/templatetags/accent_picker.py`, rendered by this project's
+    `templates/unfold/helpers/accent_switch.html`.
+    """
+    if not (request.user.is_authenticated and request.user.is_staff):
+        return []
+
+    active = accent_slug(request)
+    items = []
+    for slug, palette in ACCENTS.items():
+        swatch_light, swatch_dark = swatches(slug)
+        items.append({
+            "slug": slug,
+            "label": palette["label"],
+            "swatch_light": swatch_light,
+            "swatch_dark": swatch_dark,
+            "is_active": slug == active,
+        })
+    return items
+
+
+@require_POST
+@user_passes_test(lambda u: u.is_authenticated and u.is_staff, login_url='/admin/login/')
+def set_accent_view(request):
+    """Store the user's accent choice. Slug arrives in the POST body.
+
+    POST rather than the GET link `set_active_team_view` uses: this writes a
+    database row, so a plain link would be CSRF-able. The slug is in the body
+    rather than the URL so all nine swatches can share one form and one CSRF
+    token inside the menu.
+    """
+    from screens.models import UserPreference
+
+    slug = request.POST.get('accent')
+    if slug not in ACCENTS:
+        return HttpResponseBadRequest("Unknown accent colour.")
+
+    UserPreference.objects.update_or_create(
+        user=request.user,
+        defaults={'accent': slug},
+    )
+
+    next_url = request.META.get('HTTP_REFERER') or '/admin/'
+    return HttpResponseRedirect(next_url)
+
+
 def _patched_admin_get_urls():
     custom = [
         path(
             'set-active-team/<str:team_ref>/',
             set_active_team_view,
             name='set_active_team',
+        ),
+        path(
+            'set-accent/',
+            set_accent_view,
+            name='set_accent',
         ),
     ]
     return (
@@ -186,7 +291,8 @@ def dashboard_callback(request, context):
     Every count respects the active team via ``scope_to_active_team`` — the same
     helper the changelists use — so users only ever see their own team's totals
     (superusers in ALL_TEAMS mode see global totals)."""
-    from screens.models import Playlist, Schedule, Screen, Source
+    from screens.models import (
+        Playlist, Schedule, Screen, ScreenStatus, Source, StatusReason)
     from screens.team_scope import scope_to_active_team
 
     screens_qs = scope_to_active_team(Screen.objects.all(), request)
@@ -194,11 +300,24 @@ def dashboard_callback(request, context):
     schedules_qs = scope_to_active_team(Schedule.objects.all(), request)
     sources_qs = scope_to_active_team(Source.objects.all(), request)
 
-    # "Online" mirrors Screen.online(): last_seen within the last minute.
-    online_cutoff = timezone.now() - timedelta(minutes=1)
-    screens_total = screens_qs.count()
-    screens_online = screens_qs.filter(last_seen__gte=online_cutoff).count()
-    screens_offline = screens_total - screens_online
+    # Counted off the same with_status() annotation the changelist badge and
+    # filter use, so the doughnut cannot disagree with them. This used to
+    # re-hardcode `now - 1 minute`, which was the only copy of the online cutoff
+    # living outside Screen.
+    by_status = {
+        row["derived_status"]: row["n"]
+        for row in (screens_qs.with_status()
+                    .values("derived_status")
+                    # distinct=True because team scoping joins the teams M2M;
+                    # today's single-team filter cannot duplicate a row, but a
+                    # plain Count would silently start double-counting if that
+                    # ever became a teams__in.
+                    .annotate(n=Count("id", distinct=True)))
+    }
+    screens_online = by_status.get(ScreenStatus.ONLINE, 0)
+    screens_attention = by_status.get(ScreenStatus.ATTENTION, 0)
+    screens_offline = by_status.get(ScreenStatus.OFFLINE, 0)
+    screens_total = screens_online + screens_attention + screens_offline
 
     # Content broken down by type (Image / Video / Website).
     type_colors = {
@@ -213,14 +332,22 @@ def dashboard_callback(request, context):
         for key, label in Source.types
     ]
 
-    # last_seen has auto_now_add, so it is never null; "< cutoff" == not online.
-    offline_screens = [
+    # Amber first, then red — see ScreenQuerySet.needing_attention(). The
+    # "since" figure comes from recorded history and lags the live status by up
+    # to one check_screens cycle, so it is only used while the two agree;
+    # otherwise the heartbeat, which is always current, is shown instead.
+    attention_screens = [
         {
             "name": s.name or f"Screen #{s.pk}",
+            "status": s.derived_status,
+            # From the annotation, not status_reason_label(), so the word and
+            # the badge come from the same evaluation of the tiers.
+            "reason": StatusReason(s.derived_reason).label if s.derived_reason else "",
+            "since": s.status_since if s.recorded_status == s.derived_status else None,
             "last_seen": s.last_seen,
             "url": reverse("admin:screens_screen_change", args=[s.pk]),
         }
-        for s in screens_qs.filter(last_seen__lt=online_cutoff).order_by("last_seen")[:5]
+        for s in screens_qs.needing_attention()[:5]
     ]
 
     context.update({
@@ -229,11 +356,13 @@ def dashboard_callback(request, context):
 
         "screens_total": screens_total,
         "screens_online": screens_online,
+        "screens_attention": screens_attention,
         "screens_offline": screens_offline,
         "screens_url": reverse("admin:screens_screen_changelist"),
         "screens_chart_data": _doughnut_data(
-            ["Online", "Offline"], [screens_online, screens_offline],
-            ["#22c55e", "#ef4444"],
+            ["Online", "Needs attention", "Offline"],
+            [screens_online, screens_attention, screens_offline],
+            ["#22c55e", "#f59e0b", "#ef4444"],
         ),
 
         "playlists_count": playlists_qs.count(),
@@ -250,7 +379,7 @@ def dashboard_callback(request, context):
             [c["color"] for c in content_by_type],
         ),
 
-        "offline_screens": offline_screens,
+        "attention_screens": attention_screens,
 
         "can_add_source": request.user.has_perm("screens.add_source"),
         "can_add_playlist": request.user.has_perm("screens.add_playlist"),

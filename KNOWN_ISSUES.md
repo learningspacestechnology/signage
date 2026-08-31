@@ -3,6 +3,13 @@
 Things found but deliberately not fixed yet, each with enough detail to pick up cold.
 Remove an entry when it is fixed.
 
+Numbers are append-only so existing references stay valid; they are not a
+priority order, and gaps mean an entry was fixed and removed.
+
+Nothing left here is actively mis-serving screens. Issue 9 was — schedule rules
+evaluated in the UTC wall clock, so every rule fired an hour late throughout BST
+and day-of-week patterns fired on adjacent days — and it is fixed.
+
 Found 2026-08-04 while diagnosing the admin bulk-delete 500 (fixed — see the
 `delete_queryset` override in `TeamScopedAdminMixin`, `screens/admin.py`).
 
@@ -19,6 +26,14 @@ Django produced.
 `django.request` ERROR records to a `console` handler filtered out by `require_debug_true`,
 and to `mail_admins`, which is inert because `ADMINS` and email are unset. uwsgi logs only
 the request line.
+
+**Re-verified 2026-08-12 and confirmed as written.** No `LOGGING`, `ADMINS`, `EMAIL_BACKEND` or
+`EMAIL_HOST` exists in any of the three settings layers, and `settings.ADMINS` is `[]`. Emitting
+the exact record Django uses for a 500 (`django.request` ERROR with `exc_info`) under Django's
+`DEFAULT_LOGGING` produces a full traceback on stderr at `DEBUG=True` and **nothing at all** at
+`DEBUG=False`. Note the `django` logger does have two handlers attached, so Python's last-resort
+stderr fallback never engages — the record is found, handled, and discarded by both. That is
+what makes this different from issue 3's cleanup errors, which do reach the log.
 
 **Approach.** Log to stdout/stderr, not to a file inside the container: uwsgi, celery and
 nginx already stream there so there is one place to look; a file inside the container has no
@@ -105,84 +120,330 @@ the deploy repo, then one `./update.sh` picks up both. The reverse order takes t
 
 ---
 
-## 2. `TeamAdmin` bulk delete returns 500
+## 2. `TeamAdmin` refuses a blocked delete in the wrong vocabulary
 
-**Symptom.** Bulk-deleting a team that still has members or owned objects gives a 500 instead
-of the intended refusal message.
+**This entry previously claimed bulk delete returns a 500. It does not — retested 2026-08-12.**
+It was a predicted second bug rather than an observed one, and the prediction was wrong.
 
-**Cause.** `screens/admin.py`, `TeamAdmin`. `has_delete_permission(request, obj=None)` returns
-`True` for a superuser when `obj is None`, which is exactly how `delete_selected` asks. The
-action then reaches `delete_queryset` → `delete_model`, which raises a bare `ValidationError`
-that the admin does not catch. Distinct from the bulk-delete bug already fixed: `TeamAdmin`
-does not use `TeamScopedAdminMixin` and overrides `delete_queryset` to loop per object, so it
-never touches `.distinct()`.
+Actual behaviour, as a superuser:
 
-**Fix.** Override `get_deleted_objects` and put blocked teams into the returned `protected`
-list. That is Django's own hook — it makes the confirmation page explain the refusal and hides
-the "Yes, I'm sure" button, covering the single-object and bulk paths identically. Keep
-`delete_queryset`/`delete_model` as a backstop but convert the `ValidationError` into
-`self.message_user(..., level=messages.ERROR)` rather than raising. Leave the `pre_delete`
-signal in `screens/models/team.py` alone — it guards shell and cascade deletes, and the tests
-in `screens/tests/test_team_scoping.py` depend on it raising.
+| Case | Confirmation page | After confirming | Deleted? |
+|---|---|---|---|
+| Team owns a playlist | 200, no confirm button | 403 | no |
+| Team has a member | 200, no confirm button | 403 | no |
+| Clean team | 200 | 302 | yes |
+| Single-object delete form, blocked team | — | 403 | no |
 
-**Help docs.** `helpdocs/content/technical/users-and-teams.md` says the guard "can't be
-bypassed with a bulk action" — true, but the operator currently sees a crash. Reword to
-describe what they will actually see.
+Nothing crashes and nothing is wrongly deleted. The guard holds on both paths.
 
----
+**Cause of the real, much smaller defect.** The old entry assumed `delete_selected` only asks
+`has_delete_permission(request, obj=None)`. It does not: `get_deleted_objects` asks it for
+*each* object (`django/contrib/admin/utils.py:132`). Ours returns `False` for a blocked team, so
+the team lands in `perms_needed`, the page renders Django's *"Cannot delete team … your account
+doesn't have permission to delete the following types of objects"* with no confirm button, and a
+hand-crafted POST hits `raise PermissionDenied` (`django/contrib/admin/actions.py:43-44`).
+`delete_queryset` / `delete_model` are never reached in this path, so the `ValidationError` the
+old entry blamed never fires.
 
-## 3. Orphaned media files accumulate forever
+So the operator is refused *and* told something — just in the wrong vocabulary. The page blames
+their account's permissions when the real reason is that the team still owns content or has
+members, which is information they could act on.
 
-**Symptom.** `/srv/media` grows monotonically; deleted content leaves its file behind.
+**Fix.** Still the `get_deleted_objects` override, but now for wording rather than
+crash-avoidance. One ordering detail to save re-deriving: `delete_selected` guards its delete
+branch with `not protected` (`actions.py:43`), so putting blocked teams into `protected` is by
+itself enough to stop the 403 on a crafted POST. But `perms_needed` is populated independently,
+so the misleading permission sentence stays unless `has_delete_permission(request, obj)` also
+stops returning `False` — let `protected` carry the refusal instead. Leave the `pre_delete`
+signal in `screens/models/team.py` alone; it guards shell and cascade deletes and
+`screens/tests/test_team_scoping.py` depends on it raising.
 
-**Cause.** Nothing removes the file. There is no `post_delete` cleanup — the `pre_delete`
-receiver in `screens/models/source.py` only bumps playlist timestamps — and Django has not
-auto-deleted `FileField` files since 1.3. The periodic expired-source cleanup in
-`screens/tasks.py` compounds it by bulk-deleting sources on a schedule.
+**Priority: cosmetic.** It refuses correctly today, and no data is at risk.
 
-Note this also means a media-directory permission problem would surface on **upload**, never
-on delete.
-
-**Fix.** A `prune_orphaned_media` management command under `screens/management/commands/`. It
-lists files in `MEDIA_ROOT` unreferenced by any `Source.file`, prints them with a total size,
-and deletes only when given `--delete`; dry-run is the default. Auditable and safe against a
-rolled-back transaction, unlike a `post_delete` receiver. Can join `CELERY_BEAT_SCHEDULE` once
-trusted.
-
-**Tests.** Temporary `MEDIA_ROOT` with one referenced and one orphaned file: dry-run reports
-one orphan and deletes nothing; `--delete` removes only the orphan.
+**Help docs.** `helpdocs/content/technical/users-and-teams.md` says the guard "can't be bypassed
+with a bulk action". That is true and now verified by test, so the correction the old entry
+asked for is not needed.
 
 ---
 
-## 4. Over-long names crash any logged admin action
+## 3. Media orphans — original diagnosis was wrong; only edge paths leak
 
-**Symptom.** Latent, not yet observed. Adding, changing or deleting a `Source` or `Playlist`
-whose name exceeds 200 characters would 500 in production.
+**This entry previously claimed `/srv/media` grows monotonically because nothing deletes files
+on `Source` delete. That is false — retested 2026-08-12.** `django_cleanup.apps.CleanupConfig`
+is in `INSTALLED_APPS` (`base_settings.py:51`) and the deploy does not override
+`INSTALLED_APPS`, so it is active in production. It registers on `post_init`, `pre_save`,
+`post_save` and `post_delete`, and it handles every path the old entry worried about:
 
-**Cause.** `Source.name` and `Playlist.name` are unbounded `TextField`s, but the admin writes
-`str(obj)` into `django_admin_log.object_repr`, a `varchar(200)`. Under MariaDB's strict mode
-that raises `DataError: Data too long`. SQLite does not enforce lengths, so it never appears
-in development.
+| Path | File removed? |
+|---|---|
+| `source.delete()` | yes |
+| `Source.objects.filter(...).delete()` (bulk) | yes |
+| Replacing `Source.file` and saving | yes (old file) |
+| `screens.tasks.cleanup_sources` periodic task | yes |
 
-**Fix.** Add `max_length=200` to both fields. For `TextField` this drives form validation and
-the widget without altering the MySQL `longtext` column, so the generated migration should be
-a no-op at the database level — confirm during implementation rather than assuming. Check for
-existing offenders first:
+**Beware when re-verifying this.** django-cleanup defers deletion to
+`transaction.on_commit()`, which never fires inside `TestCase`'s rolled-back transaction, so a
+naive probe shows every file surviving and looks exactly like the bug described above. That is
+what produced the original wrong diagnosis. Use `TransactionTestCase`, or
+`self.captureOnCommitCallbacks(execute=True)`.
 
-```python
-from django.db.models.functions import Length
-Source.objects.annotate(n=Length("name")).filter(n__gt=200).values_list("id", "n")
-Playlist.objects.annotate(n=Length("name")).filter(n__gt=200).values_list("id", "n")
+**The residual, much smaller issue.** django-cleanup only reacts to signals, so files can still
+be stranded by paths it cannot see, and nothing can audit or reclaim them:
+
+- uploads whose transaction later rolled back — the file is written before commit, and nothing
+  was deleted for django-cleanup to react to;
+- `Source` rows deleted through a data migration using `apps.get_model`, since signals bind to
+  the concrete class and do not fire for historical models (the same property `0032` relies on);
+- anything predating django-cleanup's addition, or left by a restore that put the database and
+  `/srv/media` out of step.
+
+**Correction to the old permission note.** It said a media-directory permission problem "would
+surface on upload, never on delete". The opposite half is now wrong: deletes do touch the
+filesystem. `docker-compose.yml` bind-mounts `./media:/srv/media`, which masks the Dockerfile's
+build-time `chown -R advertising:advertising /srv/media` with the host directory's ownership, so
+a mismatch breaks both. django-cleanup catches the failure and calls `logger.exception`
+(`django_cleanup/handlers.py:112-116`) rather than raising, so it reaches `docker compose logs`
+only via Python's last-resort stderr handler — easy to miss until issue 1 is done.
+
+**Fix, if it is ever worth it.** The `prune_orphaned_media` management command described
+before — list files in `MEDIA_ROOT` unreferenced by any `Source.file`, print them with a total
+size, delete only with `--delete`, dry-run by default. It is now an occasional audit tool rather
+than the primary cleanup mechanism, so it does **not** belong in `CELERY_BEAT_SCHEDULE`:
+scheduling a deleter against a race it cannot see is worse than the leak. Check whether real
+orphans exist before writing it:
+
+```bash
+docker compose exec advertising python manage.py shell -c \
+  "from screens.models import Source; import os; from django.conf import settings; \
+   db={s.file.name for s in Source.objects.exclude(file='')}; \
+   disk={os.path.relpath(os.path.join(r,f), settings.MEDIA_ROOT) \
+         for r,_,fs in os.walk(settings.MEDIA_ROOT) for f in fs}; \
+   print(len(disk-db), 'orphans of', len(disk), 'files')"
 ```
 
-**Help docs.** Mention the limit in `helpdocs/content/users/content.md` and `playlists.md`.
+---
+
+## 4. Over-long names crashing the admin log — does not happen
+
+**This entry was wrong. Retested 2026-08-12; nothing to fix.** It was latent and unobserved,
+which is why it survived unchallenged.
+
+The premise was sound as far as it went: `Source.name` and `Playlist.name` are unbounded
+`TextField`s (`source.py:32`, `playlist.py:23`) and `django_admin_log.object_repr` really is a
+`varchar(200)`. The conclusion did not follow. `LogEntryManager.log_action` truncates before the
+insert — `object_repr=object_repr[:200]` (`django/contrib/admin/models.py:42`) — and every admin
+write goes through it (`django/contrib/admin/options.py:926,943,961`).
+
+Verified end to end: adding a `Source` with a 400-character name through the admin returns 302,
+creates the object, and writes a `LogEntry` whose `object_repr` is exactly 200 characters. The
+database never sees an over-length value, so the MariaDB-versus-SQLite distinction the entry
+leaned on is irrelevant.
+
+**Optional, and a preference rather than a fix.** `max_length=200` on the two fields would still
+buy form validation, a saner widget, and readable list displays. Worth doing only if someone is
+already in those models.
+
+**Knock-on.** Migration `0032`'s `NAME_MAX_LENGTH = 150` truncation cites this issue as its
+reason. The truncation itself is fine — auto-generated names stay readable — but the stated
+justification was wrong, and the comment has been corrected in place.
 
 ---
 
-## 5. Watch — intermittent 502 on room schedule polling
+## 5. Ticker screens cannot play screen-level interspersed content
+
+**Symptom.** A screen with the ticker enabled ignores its own **Interspersed playlist**. The
+playlist's own interspersed content still plays. Currently unreachable rather than fixed —
+`ScreenAdmin` hides the two fields while `ticker_enabled` is set (see
+`_interspersed_blocked_by_ticker`), so an operator can no longer configure the combination.
+
+**Cause.** `screens/views.py`. A ticker screen gets `_ticker_redirect_payload`, a single
+iframe pointing at `/screen_wrapper/<id>`. That template's inner iframe loads
+`/playlist/<id>`, which nginx serves as the Vue player, which fetches
+`/api/playlist/<id>` → `view_playlist_json` → `render_playlist_json(playlist)` with no
+`screen` argument. The screen's identity never crosses into the inner frame, so
+`interspersed.screen` is always `null`. Predates the move to playlist-based interspersed
+content; the old single-source field was lost the same way.
+
+**Fix.** Make `view_playlist_json` screen-aware. Resolve the caller with the existing
+`get_screen(request)` and pass `screen=screen` **only** when
+`screen.schedule.get_playlist().pk == playlist_id`. That guard matters: without it an
+arbitrary `/api/playlist/<id>` fetch would leak another screen's configuration. Then remove
+the admin guard and its tests in `screens/tests/test_admin_interspersed.py`, and put the
+demo data's screen-level interspersed setting back on the ticker screen so `screen-form` and
+`ticker-fieldset` can share one screen again (`helpdocs/demo_data.py`,
+`helpdocs/screenshots.py`).
+
+**Ruled out.** Pointing the inner iframe at `/screen/<id>` instead: that re-enters the ticker
+branch in `view_screen_json` and nests wrappers until the browser dies.
+
+**Tests.** `test_ticker_inner_playlist_json_includes_the_screen_stream`, and one asserting a
+plain `/api/playlist/<id>` fetch from an unrelated IP still reports `interspersed.screen` as
+`null`.
+
+---
+
+## 6. Timezone consistency: naive `datetime.now()`
+
+**Symptom.** `RuntimeWarning: DateTimeField ... received a naive datetime while time zone
+support is active` on most test runs, and on every content query in production.
+
+**Cause.** `USE_TZ = True` has been set since `f36c997` (`advertising/base_settings.py`), but
+two call sites still build naive values: `screens/models/playlist.py:64` (`get_sources`) and
+`screens/tasks.py:9` (`cleanup_sources`). Upstream fixed these in `c80aa01`, which this branch
+has not taken.
+
+**This entry previously listed a third site, `schedule_rule.py:32` (`is_expired`), as mere
+warning noise. That was wrong twice over** — it was a live `TypeError`, not a warning, and
+upstream's `c80aa01` did not fix it either. `RecurrenceField` serialises `dtstart` as UTC, so
+any rule saved with one deserialises *aware*, and `.after(<naive cutoff>)` raised
+`can't compare offset-naive and offset-aware datetimes`. Because `cleanup_schedule` filters
+with a lambda over every rule, one such row aborted the whole task. Fixed alongside issue 9 by
+normalising both the cutoff and the `dtstart`, and covered by
+`screens/tests/models/tests_schedule_rule.py`.
+
+**The two remaining sites are not currently wrong**, which is why they have survived. Django sets
+`os.environ["TZ"]` from `TIME_ZONE` and calls `time.tzset()`
+(`django/conf/__init__.py:254-264`), so `datetime.now()` returns Europe/London local time and
+Django interprets naive values in the same zone — the instant lands correctly. What they cost:
+warning noise, an ambiguous hour every autumn when the clocks go back, and a trap for
+`aggregate_last_updated` in `screens/views.py`, whose `max()` raises
+`TypeError: can't compare offset-naive and offset-aware datetimes` the moment a naive value
+reaches it.
+
+**That safety rests on the container carrying tzdata, so verify before relying on it.** Neither
+`docker-compose.yml` nor `.env.sample` sets `TZ`, and the deploy's
+`docker/advertising/settings.py` does not override `TIME_ZONE`, so production takes
+`Europe/London` from `base_settings`. Django's `tzset()` call then only resolves it if
+`/usr/share/zoneinfo` is populated. The `python:3.12` base image is Debian and ships tzdata, so
+this should hold — but if it ever did not, `datetime.now()` would return UTC while Django kept
+interpreting naive values as Europe/London, and every one of these sites would silently land an
+hour out during BST. Confirm with:
+
+```bash
+docker compose exec advertising python -c \
+    "import datetime; print(datetime.datetime.now(), datetime.datetime.now(datetime.UTC))"
+```
+
+**Do not blanket-swap `datetime.now()` to `timezone.now()`.** The schedule bug that was issue 9
+was the *opposite* problem — aware UTC where naive local is required — and some naive uses are
+deliberate and correct:
+
+- `room_schedules/o365_requests.py:66` compares `now.hour` against `HOUR_BREAK_POINT`. That
+  needs the local wall clock and would break on `timezone.now()`, which yields the UTC hour.
+- `book_adhoc` in the same module keeps `datetime.now()` on purpose: O365 handles the zone
+  server-side from the `timeZone` field, and switching would shift the wall-clock time sent.
+
+The rule is which *kind* of time each site wants — instant, or local wall clock — not which
+function looks more modern.
+
+**The Celery beat settings that used to be listed here are done**, alongside issue 9.
+`DJANGO_CELERY_BEAT_TZ_AWARE = True` was the half that mattered: at `False`, `ModelEntry` wrote
+`PeriodicTask.last_run_at` as naive UTC, which Django read back as `Europe/London` — an hour
+early for the whole of BST. `CELERY_ENABLE_UTC = False` was added for upstream parity only;
+`Celery.timezone` consults it solely when `conf.timezone` is falsy, and `CELERY_TIMEZONE` is
+set, so it does not pick the zone. See the comments on both keys in `base_settings.py`.
+
+---
+
+## 7. Dependency bump — Django, Unfold, and everything else
+
+**Symptom.** None yet. Everything is pinned exactly and nothing has moved for a while:
+`django==4.2.29`, `django-unfold==0.82.0`, `celery[redis]==5.3.6`, `django-celery-beat==2.5.0`,
+`django-celery-results==2.6.0`, `django-recurrence==1.14`, `pillow==12.1.1`. Upstream has
+already bumped Django (`a650fd8`).
+
+**Take it as an isolated `uv` change, not by merging upstream.** `upstream/master` carries
+`screens/migrations/0023_alter_playlist_parents_alter_source_playlists`, which collides with
+this branch's `0023`–`0032`; a merge needs the numbers reconciling by hand. Its content is
+help_text-only `AlterField`s already superseded by our `0030`, so there is nothing to gain.
+Of upstream's 8 unmerged commits, `dc1b5f3` (recurrence widget) is already done here
+independently — the `Media` block is at `screens/admin.py:213` — and `c57cd51` (interspersed)
+was ported in this branch's own commit. **Both recurrence assets have since diverged from
+upstream's** and are no longer byte-identical; see item 5 below.
+That leaves only the Django bump (`a650fd8`) as a real gap, and only half of it: its
+`DEFAULT_AUTO_FIELD` line has since been taken on its own, so what remains is the `USE_L10N`
+removal and the pins themselves. `c80aa01` and `4d9c07d` were taken with issue 9.
+
+**Checklist for when you do it, in order:**
+
+1. **`DEFAULT_AUTO_FIELD` is done** — `base_settings.py` now sets it to
+   `django.db.models.AutoField`, so `manage.py` no longer buries its output in 19 `models.W042`
+   warnings and `advertising/tests/test_system_checks.py` fails if that regresses. Keep the
+   reason in mind during the bump: it **must** stay `AutoField`. Reaching for Django's
+   `BigAutoField` default — the natural-looking fix — would generate an `AlterField` on every
+   primary key in the project, plus every FK that references them, because these tables predate
+   Django 3.2.
+   **Note `a650fd8` has been taken in halves.** It carried both `DEFAULT_AUTO_FIELD` and the
+   `USE_L10N` deletion; only the former is in. `USE_L10N` is still valid on 4.2, so it was left
+   for step 2 — do not read "`a650fd8` is done" and skip it, as it is a hard startup blocker on
+   Django 5.0.
+2. **Delete `USE_L10N = True`** (`base_settings.py:345`). Deprecated in Django 4.0, *removed*
+   in 5.0, so it is a hard blocker. It is the **only** one I found: I checked for
+   `django.utils.timezone.utc`, `index_together`, `providing_args`, `DEFAULT_FILE_STORAGE`,
+   `STATICFILES_STORAGE`, `force_text`, `ugettext`, `NullBooleanField` and
+   `django.conf.urls.url`, and none are present. (The `timezone.utc` hits in
+   `screens/tests/models/` and `room_schedules/o365_requests.py` are the stdlib
+   `datetime.timezone`, not Django's.) No `STORAGES`/`*_STORAGE` settings are configured
+   either, so the 4.2 storage migration is a no-op here.
+3. **Unfold is the real risk, not Django.** This project overrides two Unfold internals —
+   `templates/unfold/helpers/userlinks.html` (36 lines; the team switcher, which is this
+   project's own mechanism rather than Unfold's unconfigured `SITE_DROPDOWN`) and
+   `templates/unfold/helpers/unauthenticated_header.html` (12 lines) — plus
+   `templates/admin/login.html` (100) and `templates/admin/index.html` (149). An override
+   silently keeps rendering the old markup when the upstream template moves on. Diff each
+   against the new version's original before assuming the admin still works.
+4. **Re-capture help screenshots after an Unfold bump**, and expect churn. The `ticker-fieldset`
+   shot in `helpdocs/screenshots.py` drives both a `<details>` toggle and Django's `collapse.js`
+   Show/Hide because which one Unfold renders is version-dependent — that `run_js` is
+   version-sensitive by construction. Its `clip='fieldset.collapse'` also assumes the ticker is
+   the only collapsible fieldset on the screen form.
+5. **`django-recurrence` carries a workaround against its own widget internals.**
+   `screens/static/screens/js/recurrence_unfold_init.js` decorates the monthly day grid's last
+   four cells (negative `BYMONTHDAY`, which upstream renders as unlabelled integers) and
+   restores the selected highlight, which upstream sets by comparing the loop counter 1..35
+   against the stored value so a saved `-1` never shows as selected — data loss on the next
+   click. It hooks purely on DOM shape: a `table.grid` whose cells read `-4`..`-1`, and the
+   widget root being the immediately-preceding sibling of its textarea. A version bump could
+   move any of that. If the grid stops being decorated after a bump, that file is why; if
+   upstream fixes the highlight itself, drop our half of it rather than double-applying.
+   The `.venv` copy of `recurrence-widget.js` is the reference — do not edit it.
+6. **Fold in the Celery beat timezone settings** (issue 6) if `celery` or `django-celery-beat`
+   move, since that is where `CELERY_ENABLE_UTC` and `DJANGO_CELERY_BEAT_TZ_AWARE` bite.
+7. **Watch the deploy's in-place mutation of `CELERY_BEAT_SCHEDULE`.** The deploy override does
+   `del CELERY_BEAT_SCHEDULE['build-schedule-hourly']` and then inserts
+   `build-schedule-often`. Renaming or removing that key in `base_settings.py` raises `KeyError`
+   at container start, and the `advertising` submodule pointer must advance to a commit
+   containing the change *before* the deploy repo is updated — the same ordering hazard issue 1
+   documents for `LOGGING`. Nothing else in the bump touches it, but a beat version change is
+   exactly when someone reorganises that dict.
+8. **`makemigrations --check` is now a usable guard — lean on it.** It used to report a phantom
+   pending migration on every developer machine; `Source.file`'s `help_text` no longer embeds
+   the per-deployment `MAX_IMG_*` values, so a clean tree is genuinely clean.
+   `advertising/tests/test_migration_state.py` asserts it, which means the suite catches exactly
+   the kind of model drift a framework bump causes. If it starts failing after the bump, read
+   the field names it reports before generating anything — a bump that quietly changes a field's
+   deconstruction wants understanding, not a rubber-stamped migration.
+
+**Checked against the deploy:** `docker/advertising/settings.py` overrides none of `USE_L10N`,
+`DEFAULT_AUTO_FIELD`, `USE_TZ`, `TIME_ZONE`, `CELERY_ENABLE_UTC` or
+`DJANGO_CELERY_BEAT_TZ_AWARE`, so all of the settings work above lands in `base_settings.py`
+alone, with no `.env.sample` entry needed. Per the three-layer model in `CLAUDE.md`, only add a
+deploy-side `os.getenv` if a value should vary per site — none of these should.
+
+---
+
+## 8. Watch — intermittent 502 on room schedule polling
 
 One occurrence in the production nginx log, 2026-08-03 15:22:
 `GET /event_schedules/2/3/state_hash` → 502. A 502 means uwsgi refused the connection or the
 worker died, so Django logs nothing regardless of configuration. May simply have been a deploy
 restart. Not worth chasing on a single sample — once issue 1 is done, check whether it recurs
 and whether anything appears in the app log alongside it.
+
+**Still live, checked 2026-08-12.** The route exists and matches the observed path exactly:
+`path('<int:venue_id>/<int:room_id>/state_hash', room_state_hash, ...)`
+(`room_schedules/urls.py:36`, so `/event_schedules/2/3/state_hash` is venue 2, room 3). Three
+room templates still poll it — `room_screen.html:642`, `room_screen_uoe.html:287`,
+`room_tablet.html:713` — so this is a hot endpoint, not a stale one, and the watch is still
+worth keeping. The 502 itself cannot be reproduced or ruled out from a dev checkout; it needs
+the production nginx log.

@@ -7,12 +7,17 @@ from urllib.parse import urlparse
 from screens import models
 from screens.team_scope import scope_to_active_team, scope_to_user_teams
 from screens.utils import get_client_ip, get_client_hostname
-from datetime import datetime
-from advertising.settings import AUTO_MAKE_SCREENS_FOR_NEW_IPS, UNCONFIGURED_SCREEN_MESSAGE
+from django.utils import timezone
+from django.conf import settings
 
 
 _TICKER_SENTINEL_PLAYLIST_ID = -1
 _TICKER_SENTINEL_LAST_UPDATED = "1970-01-01T00:00:00"
+
+# The player reads `interspersed.playlist.items.length` with no optional
+# chaining, so each key must be either null or an object that always carries an
+# items array. Emitting `{}` throws during render and the screen goes black.
+NO_INTERSPERSED = {"playlist": None, "screen": None}
 
 
 def _ticker_redirect_payload(screen):
@@ -20,7 +25,7 @@ def _ticker_redirect_payload(screen):
     wrapper_url = reverse("screens/screen_wrapper", args=[screen.id])
     return {
         "playlist": [{"src": wrapper_url, "type": models.Source.IFRAME, "duration": 86400}],
-        "interspersed": [],
+        "interspersed": dict(NO_INTERSPERSED),
         "current_playlist": _TICKER_SENTINEL_PLAYLIST_ID,
         "playlist_last_updated": _TICKER_SENTINEL_LAST_UPDATED,
         "screen_id": screen.id,
@@ -41,7 +46,7 @@ def get_screen(request):
     if screen:
         return screen
 
-    if AUTO_MAKE_SCREENS_FOR_NEW_IPS:
+    if settings.AUTO_MAKE_SCREENS_FOR_NEW_IPS:
         return models.Screen.objects.create(
             ip=ip,
             name=get_client_hostname(ip),
@@ -56,13 +61,13 @@ def view_unconfigured(request):
     return render(request, 'screens/unconfigured_screen.html', {
         'ip': ip,
         'hostname': get_client_hostname(ip),
-        'message': UNCONFIGURED_SCREEN_MESSAGE,
+        'message': settings.UNCONFIGURED_SCREEN_MESSAGE,
     }, status=404)
 
 
 _UNCONFIGURED_PAYLOAD = {
     "playlist": [{"src": "/api/unconfigured", "type": models.Source.IFRAME, "duration": 3600}],
-    "interspersed": [],
+    "interspersed": dict(NO_INTERSPERSED),
     "current_playlist": -1,
     "playlist_last_updated": "1970-01-01T00:00:00",
     "screen_id": None,
@@ -86,14 +91,15 @@ def view_screen_automatic(request):
 
 
 def view_screen(request, screen_id):
+    """Dev-only renderer. In production nginx serves the Vue player for
+    /screen/<id>; this view is only reached under runserver. It plays the base
+    playlist without interspersion — the interleaving lives in the player."""
     try:
         screen = models.Screen.objects.get(id=screen_id)
         if screen.schedule:
             current_playlist = screen.schedule.get_playlist()
             view_dict = {
                 'playlist': current_playlist.get_resolved_sources(),
-                'interspersed': models.PlaylistEntry(source=current_playlist.interspersed_source),
-                'screen_interspersed': models.PlaylistEntry(source=screen.interspersed_source),
                 "current_playlist": current_playlist.pk,
                 "playlist_last_updated": current_playlist.last_updated.isoformat(),
                 "screen_id": screen_id,
@@ -106,11 +112,11 @@ def view_screen(request, screen_id):
 
 
 def view_playlist(request, playlist_id):
+    """Dev-only renderer — see view_screen."""
     try:
         current_playlist = models.Playlist.objects.get(id=playlist_id)
         view_dict = {
             'playlist': current_playlist.get_resolved_sources(),
-            'interspersed': models.PlaylistEntry(source=current_playlist.interspersed_source),
             "current_playlist": current_playlist.pk,
             "playlist_last_updated": current_playlist.last_updated.isoformat()
         }
@@ -138,7 +144,7 @@ def view_screen_json(request, screen_id):
     current_playlist = screen.schedule.get_playlist()
     return JsonResponse(render_playlist_json(
         current_playlist,
-        screen_interspersed=screen.interspersed_source,
+        screen=screen,
         screen_id=screen_id,
     ))
 
@@ -166,19 +172,76 @@ def view_playlist_json(request, playlist_id):
         return JsonResponse({"error": "playlist doesnt exist"}, status=404)
 
 
-def render_playlist_json(playlist, screen_interspersed=None, screen_id=None):
-    interspersed = []
-    if playlist.interspersed_source:
-        interspersed.append({"src": playlist.interspersed_source.src(), "type": playlist.interspersed_source.type})
-    if screen_interspersed:
-        interspersed.append(
-            {"src": screen_interspersed.src(), "type": screen_interspersed.type})
+def serialize_entries(entries):
+    return [{"src": e.source.src(), "type": e.source.type, "duration": e.duration} for e in entries]
+
+
+def _interspersed_stream(playlist, rate):
+    """One interspersed stream, or None when there is nothing to intersperse.
+
+    Returning None rather than an empty object is load-bearing: the player
+    dereferences `.items` without guarding, so a stream key must never be an
+    object lacking it.
+    """
+    if not playlist:
+        return None
+    items = serialize_entries(playlist.get_interspersed_sources())
+    if not items:
+        return None
+    # The player clamps identically; keep the two in step.
+    return {"items": items, "rate": max(1, rate or 1)}
+
+
+def aggregate_last_updated(playlist, screen=None):
+    """Newest publish time across everything that feeds this screen's content.
+
+    The interspersed playlists are separate rows, so their edits do not touch
+    the base playlist's own last_updated; without folding them in here, changing
+    a logo playlist would never reach any device.
+    """
+    candidates = [playlist.last_updated]
+    if playlist.interspersed_playlist:
+        candidates.append(playlist.interspersed_playlist.last_updated)
+    if screen:
+        candidates.append(screen.last_updated)
+        if screen.interspersed_playlist:
+            candidates.append(screen.interspersed_playlist.last_updated)
+    return max(candidates)
+
+
+def render_last_updated(playlist, screen=None):
+    """The single source of the publish timestamp.
+
+    /api/screen/<id> and /api/meta must render byte-identical strings, or the
+    player's strict !== diff never settles and it refetches on every poll. That
+    is the whole reason this is a function rather than an expression repeated at
+    each call site.
+
+    Rendered in local civil time, so the offset matches what the admin displays
+    and what anyone reading /api/meta by hand expects. The player only compares
+    two strings that both come from here, so the zone is cosmetic to it -- but
+    both endpoints must pick the same one, which is again why this is a funnel.
+    """
+    return timezone.localtime(aggregate_last_updated(playlist, screen)).isoformat()
+
+
+def render_playlist_json(playlist, screen=None, screen_id=None):
+    interspersed = {
+        "playlist": _interspersed_stream(
+            playlist.interspersed_playlist, playlist.interspersed_rate),
+        "screen": _interspersed_stream(
+            screen.interspersed_playlist, screen.interspersed_rate) if screen else None,
+    }
+    # The single-item hold stops a lone image being replaced by itself. With an
+    # interspersed stream it is alternating with something, so the hold would
+    # only mean an hour of that one item between each logo.
+    hold_single = not (interspersed["playlist"] or interspersed["screen"])
 
     return {
-        'playlist': list(map(lambda x: {"src": x.source.src(), "type": x.source.type, "duration": x.duration}, playlist.get_resolved_sources())),
+        'playlist': serialize_entries(playlist.get_resolved_sources(hold_single=hold_single)),
         'interspersed': interspersed,
         "current_playlist": playlist.pk,
-        "playlist_last_updated": playlist.last_updated.isoformat(),
+        "playlist_last_updated": render_last_updated(playlist, screen),
         "screen_id": screen_id
     }
 
@@ -249,12 +312,31 @@ def view_playlist_tree_json(request):
 
 
 def _get_meta(request, screen):
+    # Stamped before the unconfigured branch below, not after it. A screen with
+    # no schedule yet is still polling perfectly happily, and stamping only on
+    # the configured path meant it read offline for as long as it sat
+    # unconfigured -- a device that is working being reported as dark.
+    #
+    # save(update_fields=[...]) rather than a plain save(): Model._save_table
+    # filters the field list by update_fields *before* calling field.pre_save(),
+    # so Screen.last_updated's auto_now never fires. This is the 60-second
+    # heartbeat -- stamping it would move the published timestamp every minute,
+    # the player's :key would change, it would remount the Playlist component,
+    # and every screen in the estate would restart from item one once a minute.
+    #
+    # Only last_seen is in the UPDATE, so an admin edit made in the intervening
+    # seconds is not written back over. Two differences from the queryset
+    # .update() this replaced, both accepted: pre_save/post_save now fire on
+    # Screen (no receivers today; any added later runs once per device per
+    # minute), and Django raises DatabaseError if the row was deleted between
+    # the read and this write, where .update() silently affected zero rows.
+    screen.last_seen = timezone.now()
+    screen.save(update_fields=["last_seen"])
+
     if screen.schedule is None:
         return JsonResponse(_UNCONFIGURED_META)
 
     playlist = screen.schedule.get_playlist()
-    screen.last_seen = datetime.now()
-    screen.save()
 
     if screen.has_ticker():
         # Match the sentinel returned by /api/screen so outer Vue's diff stays quiet
@@ -269,7 +351,7 @@ def _get_meta(request, screen):
 
     return JsonResponse({
         "current_playlist": playlist.pk,
-        "playlist_last_updated": playlist.last_updated.isoformat(),
+        "playlist_last_updated": render_last_updated(playlist, screen),
         "ticker_enabled": False,
         "ticker_text": "",
     })

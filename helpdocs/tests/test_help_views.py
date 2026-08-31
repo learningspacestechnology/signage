@@ -5,6 +5,8 @@ Follows the project's existing conventions: plain Django `TestCase` with
 and custom admin pages exercised through the URL they are actually served at
 (see `room_schedules/tests/test_o365_sync.py`).
 """
+import re
+
 from django.contrib.auth.models import Permission, User
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
@@ -102,6 +104,57 @@ class HelpIndexTests(TestCase):
     def test_unknown_audience_is_404(self):
         response = _client_for(self.user).get('/admin/help/nonsense/')
         self.assertEqual(response.status_code, 404)
+
+
+class SidebarHighlightTests(TestCase):
+    """Every help URL must highlight the sidebar entry that leads to it.
+
+    The two Help entries carry hand-written `active` callbacks in
+    `UNFOLD["SIDEBAR"]` rather than Unfold's default link matching, so nothing
+    keeps them in step with the URLs automatically. `/admin/help/` in particular
+    renders the *users* audience while the callback used to test only for
+    `/admin/help/users`, leaving the entry unhighlighted on the very page its
+    own link points at.
+    """
+
+    def setUp(self):
+        # Needs every page visible, so both Help entries render and each page
+        # under `registry.PAGES` is reachable rather than 403.
+        user = _staff_user('reader', superuser=True)
+        self.user = _grant(user, 'helpdocs.view_technical_docs')
+
+    def _active_links(self, path):
+        body = _client_for(self.user).get(path).content.decode()
+        return re.findall(r'<a href="(/admin/[^"]*)"[^>]*\bactive"', body)
+
+    def test_every_help_url_highlights_exactly_one_sidebar_entry(self):
+        paths = [
+            reverse('admin:help_index'),
+            reverse('admin:help_section', kwargs={'audience': registry.USERS}),
+            reverse('admin:help_section', kwargs={'audience': registry.TECHNICAL}),
+        ]
+        paths += [page.url for page in registry.PAGES]
+
+        for path in paths:
+            with self.subTest(path=path):
+                self.assertEqual(
+                    len(self._active_links(path)), 1,
+                    f'{path} should highlight exactly one sidebar entry',
+                )
+
+    def test_each_audience_highlights_its_own_entry(self):
+        users_link = reverse('admin:help_index')
+        technical_link = reverse(
+            'admin:help_section', kwargs={'audience': registry.TECHNICAL}
+        )
+
+        for path in (users_link,
+                     reverse('admin:help_section', kwargs={'audience': registry.USERS})):
+            with self.subTest(path=path, audience='users'):
+                self.assertEqual(self._active_links(path), [users_link])
+
+        with self.subTest(audience='technical'):
+            self.assertEqual(self._active_links(technical_link), [technical_link])
 
 
 class HelpPageTests(TestCase):
