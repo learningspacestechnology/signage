@@ -1,5 +1,7 @@
 /*
- * Accent picker in the sidebar user menu (templates/unfold/helpers/accent_switch.html).
+ * Everything that makes the user-selectable accent colour work in the admin
+ * chrome. Two sections: the picker itself, and the selected-sidebar-item fix
+ * the picker made necessary.
  *
  * Hand-written rather than Tailwind utility classes: Unfold ships a *compiled*
  * Tailwind bundle containing only the classes its own templates use, so an
@@ -7,9 +9,40 @@
  * in the CSS. Everything here is plain CSS over Unfold's custom properties,
  * which is also how admin_table_links.css and recurrence_unfold.css work.
  *
+ * Per-palette dark-mode overrides live alongside in `accent/<slug>.css`.
+ */
+
+/* ---------------------------------------------------------------------------
+ * Selected sidebar item
+ *
+ * Unfold marks the active nav entry with `bg-base-100 font-semibold
+ * text-primary-600` (unfold/helpers/app_list.html). The background is a
+ * near-invisible 1.05:1 against the sidebar, so selection is carried almost
+ * entirely by the *hue* of the text — which works for a purple accent and
+ * collapses for a neutral one: graphite's primary-600 (#334155) is ~1.3:1
+ * against the ordinary nav text colour, leaving font-weight as the only cue.
+ *
+ * A left bar in the accent plus a stronger background restores the signal
+ * without depending on hue, so every palette reads the same. This also stops
+ * selection being communicated by colour alone (WCAG 1.4.1).
+ * ------------------------------------------------------------------------- */
+
+#nav-sidebar-inner a.active {
+    background-color: var(--color-base-200);
+    box-shadow: inset 3px 0 0 0 var(--color-primary-600);
+}
+
+html.dark #nav-sidebar-inner a.active {
+    background-color: rgb(255 255 255 / 0.1);
+    box-shadow: inset 3px 0 0 0 var(--color-primary-500);
+}
+
+/* ---------------------------------------------------------------------------
+ * Accent picker (templates/unfold/helpers/accent_switch.html)
+ *
  * Chrome deliberately mirrors unfold/helpers/theme_switch.html so the accent
  * row and the Light/Dark/System row read as one settings block.
- */
+ * ------------------------------------------------------------------------- */
 
 .accent-switch {
     border-bottom: 1px solid var(--color-base-200);

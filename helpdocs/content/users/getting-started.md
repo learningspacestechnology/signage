@@ -72,9 +72,7 @@ one you have selected is ringed.
 
 Every option is checked to meet the WCAG AA contrast standard against both the
 light and the dark background, so none of them is a bad choice for
-readability — pick whichever you find easiest on the eye. **High contrast** is
-the default and the strongest of them, and is the one to try first if text or
-links are hard to pick out.
+readability — pick whichever you find easiest on the eye.
 
 !!! note
     If you share a machine with a colleague, you'll each see your own colour

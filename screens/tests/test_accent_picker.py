@@ -20,7 +20,14 @@ from screens.models import Source, Team, UserPreference
 LIGHT_BG = "#ffffff"
 DARK_BG = "#18181b"  # bg-base-900
 
+#: Background of the *selected* sidebar row, which the accent bar sits on:
+#: base-200 in light mode, and white/10% composited over the dark sidebar.
+SELECTED_ROW_LIGHT = "#e2e8f0"
+SELECTED_ROW_DARK = "#2b2b30"
+
 AA = 4.5
+#: WCAG 1.4.11, for UI components rather than text.
+NON_TEXT_AA = 3.0
 
 CSS_DIR = Path(__file__).resolve().parent.parent / "static" / "screens" / "css" / "accent"
 UNFOLD_TEMPLATES = Path(unfold.__file__).resolve().parent / "templates" / "unfold"
@@ -83,6 +90,35 @@ class AccentPaletteTests(TestCase):
                         f"{slug} dark {weight} ({value}) is {ratio:.2f}:1 on "
                         f"{DARK_BG}, below WCAG AA {AA}:1",
                     )
+
+    def test_selected_sidebar_indicator_stays_visible(self):
+        """Unfold signals the selected nav item with `text-primary-600` and a
+        near-invisible background, i.e. by hue. That collapses for a neutral
+        palette — graphite's primary-600 is ~1.3:1 against ordinary nav text —
+        so accent.css adds a left bar in the accent colour.
+
+        The bar is a non-text UI component, so WCAG 1.4.11 wants 3:1 against
+        what sits behind it: the selected row's own background.
+        """
+        for slug, palette in ACCENTS.items():
+            with self.subTest(accent=slug, mode="light"):
+                ratio = _contrast(palette["light"]["600"], SELECTED_ROW_LIGHT)
+                self.assertGreaterEqual(
+                    ratio, NON_TEXT_AA,
+                    f"{slug}: selected-item bar is {ratio:.2f}:1 against the "
+                    f"selected row, below {NON_TEXT_AA}:1",
+                )
+            with self.subTest(accent=slug, mode="dark"):
+                ratio = _contrast(palette["dark"]["500"], SELECTED_ROW_DARK)
+                self.assertGreaterEqual(ratio, NON_TEXT_AA, f"{slug}: {ratio:.2f}:1")
+
+    def test_accent_stylesheet_defines_the_selected_indicator(self):
+        """The bar is what makes selection legible for neutral palettes; losing
+        the rule would regress silently, since nothing else asserts on CSS."""
+        css = (CSS_DIR.parent / "accent.css").read_text()
+        self.assertIn("#nav-sidebar-inner a.active", css)
+        self.assertIn("var(--color-primary-600)", css)
+        self.assertIn("html.dark #nav-sidebar-inner a.active", css)
 
     def test_unfold_stock_purple_would_fail(self):
         """Guards the premise. If this ever passes, the two-ramp scheme may be

@@ -121,7 +121,7 @@ UNFOLD = {
     # which isn't ready while this module is being imported.
     "STYLES": [
         lambda request: static("screens/css/admin_table_links.css"),
-        lambda request: static("screens/css/accent_switch.css"),
+        lambda request: static("screens/css/accent.css"),
         # The chosen accent's dark-mode overrides. COLORS above can only emit one
         # ramp into :root, but Unfold uses --color-primary-500 for text on white
         # *and* on near-black, so the dark shades need a second, higher-specificity
@@ -259,7 +259,15 @@ UNFOLD = {
                         "title": "Help & Tutorials",
                         "icon": "help",
                         "link": reverse_lazy("admin:help_index"),
-                        "active": lambda request: request.path.startswith("/admin/help/users"),
+                        # `/admin/help/` renders the users audience (see
+                        # helpdocs.views.help_index), and is where this item's
+                        # own link points — so the bare index has to count as
+                        # active, or clicking the entry lands on a page where it
+                        # appears unselected.
+                        "active": lambda request: (
+                            request.path == "/admin/help/"
+                            or request.path.startswith("/admin/help/users")
+                        ),
                         "permission": lambda request: request.user.is_authenticated,
                     },
                     {

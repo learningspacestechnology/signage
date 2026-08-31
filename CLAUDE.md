@@ -153,6 +153,8 @@ On an unfold upgrade, **re-copy each from the new vendor version and re-apply th
 
 Those CSS files are **generated from `ACCENTS`** — do not hand-edit them; the test suite fails if they drift.
 
+**Unfold signals state with hue, which neutral palettes do not have.** The selected sidebar item is marked `bg-base-100 font-semibold text-primary-600` (`unfold/helpers/app_list.html`) — the background is ~1.05:1 against the sidebar, so selection rides almost entirely on the text being *purple*. Under a neutral accent it vanishes: graphite's `primary-600` is ~1.3:1 against ordinary nav text, leaving font-weight as the only cue. `accent.css` restores it with a left bar plus a stronger row background, which is hue-independent and so also stops selection being conveyed by colour alone (WCAG 1.4.1). **If another piece of chrome looks ambiguous under graphite, suspect the same cause** — find what unfold styles with `text-primary-*` and no other signal.
+
 **The private behaviours depended on**, i.e. the list to re-check on upgrade:
 
 - `_get_value` resolves a dotted-path string **and calls it with the request**. Pre-existing coupling — `SITE_TITLE`/`ENVIRONMENT` already rely on it — that the accent work widens to `COLORS` and `STYLES`.
