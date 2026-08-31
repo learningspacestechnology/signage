@@ -51,9 +51,29 @@ trying to change them from here.
 3. **The worker must be able to route to the screens.** The check runs from the
    worker container, not from the machine you are sitting at, so displays see
    the probe arriving from the server's own address. Two things break this: a
-   firewall between the server and the display network, and a screen subnet that
-   overlaps the container network's own address range, in which case the traffic
-   never leaves the host at all.
+   firewall between the server and the display network, and a screen subnet
+   that collides with the container network's own address range.
+
+!!! warning "A colliding subnet reports the opposite of the truth"
+    If a screen's address falls inside the container's own network range, the
+    probe is routed out the container's interface instead of towards the LAN
+    and fails without ever reaching the display. The result is **not** a
+    missing answer — it is a wrong one. The screen is reported as offline with
+    "no contact and no ping response", which reads as *"we asked and the device
+    is genuinely unreachable"*, when in fact nothing left the host.
+
+    Reporting on a screen shows online and offline correctly either way. Those
+    come from the display calling in, which needs no route in this direction at
+    all. Only the reachability half is affected.
+
+    Rarer but worse: if something else on the container network happens to hold
+    that address, the probe **succeeds** and the screen shows "responds to
+    ping" — a report about an unrelated container.
+
+    This is a deployment matter. Ask whoever administers the system to check
+    the screen subnet against the host's container networks before turning
+    reachability checking on, and to pin the container network's range so a
+    later change cannot move it onto the displays.
 
 ## What it deliberately doesn't do
 
@@ -82,6 +102,16 @@ So an estate where *every* screen says plain "no contact" and none say "needs
 attention" is telling you about the checker, not the screens — one of the three
 prerequisites above isn't met. Check **Task Results** for the **Check screens**
 job and read the worker's log for the warning about `ping`.
+
+The opposite pattern is the one to be suspicious of: *every* screen reporting
+"no contact and **no ping response**", including ones you can see are working.
+Nothing distinguishes that from a real estate-wide outage inside the admin,
+because as far as the system knows it asked and got silence. When the displays
+are visibly fine, the probe is not reaching them — a firewall, or the colliding
+subnet described above. Confirm from the server itself rather than from the
+admin: ping one of the displays from the Docker host, and then from inside the
+worker container. If the host can reach it and the container cannot, the
+container's routing is the problem.
 
 !!! note "Not-probed is not the same as failed"
     When `ping` is missing the check writes nothing at all, rather than
