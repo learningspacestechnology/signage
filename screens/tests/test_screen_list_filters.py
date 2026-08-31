@@ -1,13 +1,15 @@
-"""The Screens changelist filters: team scoping, and filtering by online status."""
+"""The Screens changelist filters: team scoping, and filtering by status."""
 
 from datetime import timedelta
 
+from django.contrib import admin
 from django.contrib.auth.models import Permission, User
 from django.contrib.contenttypes.models import ContentType
 from django.test import Client, TestCase
 from django.utils import timezone
 
-from screens.models import Playlist, Schedule, Screen, Team
+from screens.models import Playlist, Schedule, Screen, ScreenStatus, Team
+from screens.models.screen import ATTENTION_WINDOW
 
 
 class ScreenListFilterTests(TestCase):
@@ -91,42 +93,95 @@ class ScreenListFilterTests(TestCase):
         resp = self._changelist(schedule__id__exact=str(self.sched_b.pk))
         self.assertEqual(list(self._rows(resp)), [])
 
-    # --- Online filter -------------------------------------------------------
+    # --- Status filter -------------------------------------------------------
 
-    def test_online_filter_is_offered(self):
+    def test_status_filter_is_offered(self):
         resp = self._changelist()
-        self.assertContains(resp, "By online status")
+        self.assertContains(resp, "By status")
 
     def test_filter_online(self):
-        resp = self._changelist(online='1')
+        resp = self._changelist(status=ScreenStatus.ONLINE)
         self.assertEqual({s.name for s in self._rows(resp)}, {"screenAlpha"})
 
     def test_filter_offline(self):
-        resp = self._changelist(online='0')
+        resp = self._changelist(status=ScreenStatus.OFFLINE)
         self.assertEqual({s.name for s in self._rows(resp)}, {"screenAlphaDark"})
+
+    def test_filter_needs_attention(self):
+        """A screen answering ping but not reporting is amber, not red."""
+        Screen.objects.filter(pk=self.screen_a_off.pk).update(
+            last_ping_ok=timezone.now(), last_ping_attempt=timezone.now())
+        self.assertEqual(
+            {s.name for s in self._rows(self._changelist(status=ScreenStatus.ATTENTION))},
+            {"screenAlphaDark"})
+        self.assertEqual(
+            list(self._rows(self._changelist(status=ScreenStatus.OFFLINE))), [])
 
     def test_unfiltered_shows_both_and_still_excludes_other_teams(self):
         resp = self._changelist()
         self.assertEqual(
             {s.name for s in self._rows(resp)}, {"screenAlpha", "screenAlphaDark"})
 
-    def test_online_filter_agrees_with_the_online_column(self):
-        """The filter and Screen.online() must never disagree about a screen."""
-        for value, expected in (('1', True), ('0', False)):
-            rows = self._rows(self._changelist(online=value))
-            self.assertTrue(rows, f"no rows for online={value}")
-            for screen in rows:
-                self.assertEqual(bool(screen.online()), expected, screen.name)
+    def test_status_filter_agrees_with_the_status_column(self):
+        """The filter and Screen.status() must never disagree about a screen.
 
-    def test_online_filter_composes_with_the_schedule_filter(self):
+        They are built from the same tiers -- this is the test that would catch
+        the SQL and the Python halves drifting apart.
+        """
+        Screen.objects.filter(pk=self.screen_a_off.pk).update(
+            last_ping_ok=timezone.now(), last_ping_attempt=timezone.now())
+        seen = set()
+        for value in ScreenStatus.values:
+            for screen in self._rows(self._changelist(status=value)):
+                seen.add(value)
+                self.assertEqual(screen.status(), value, screen.name)
+        self.assertEqual(seen, {ScreenStatus.ONLINE, ScreenStatus.ATTENTION})
+
+    def test_status_filter_composes_with_the_schedule_filter(self):
         resp = self._changelist(
-            schedule__id__exact=str(self.sched_a.pk), online='0')
+            schedule__id__exact=str(self.sched_a.pk), status=ScreenStatus.OFFLINE)
         self.assertEqual({s.name for s in self._rows(resp)}, {"screenAlphaDark"})
 
     def test_a_screen_on_the_boundary_counts_as_offline(self):
         Screen.objects.filter(pk=self.screen_a.pk).update(
-            last_seen=Screen.online_cutoff() - timedelta(seconds=1))
+            last_seen=Screen.online_cutoff() - ATTENTION_WINDOW)
         self.assertNotIn(
-            "screenAlpha", {s.name for s in self._rows(self._changelist(online='1'))})
+            "screenAlpha",
+            {s.name for s in self._rows(self._changelist(status=ScreenStatus.ONLINE))})
         self.assertIn(
-            "screenAlpha", {s.name for s in self._rows(self._changelist(online='0'))})
+            "screenAlpha",
+            {s.name for s in self._rows(self._changelist(status=ScreenStatus.OFFLINE))})
+
+    def test_the_changelist_renders_the_badge_and_its_reason(self):
+        """The reason is what makes amber actionable, so it has to reach the
+        page — a badge on its own tells nobody where to go."""
+        Screen.objects.filter(pk=self.screen_a_off.pk).update(
+            last_ping_ok=timezone.now(), last_ping_attempt=timezone.now())
+        resp = self._changelist()
+        self.assertContains(resp, "Online")
+        self.assertContains(resp, "Needs attention")
+        self.assertContains(resp, "Responds to ping but is not reporting")
+
+    def test_the_display_methods_work_on_an_unannotated_screen(self):
+        """ScreenAdmin always annotates, but the fallback has to hold: a bare
+        Screen reaching a display method must render the same answer, not
+        raise."""
+        from screens.admin import ScreenAdmin
+        admin_obj = ScreenAdmin(Screen, admin.site)
+        Screen.objects.filter(pk=self.screen_a_off.pk).update(
+            last_ping_ok=timezone.now(), last_ping_attempt=timezone.now())
+
+        bare = Screen.objects.get(pk=self.screen_a_off.pk)
+        annotated = Screen.objects.with_status().get(pk=self.screen_a_off.pk)
+
+        self.assertEqual(admin_obj.show_status(bare), "Needs attention")
+        self.assertEqual(admin_obj.show_status(bare), admin_obj.show_status(annotated))
+        self.assertIn("Responds to ping", admin_obj.show_status_detail(bare))
+
+    def test_a_screen_just_past_the_online_cutoff_is_amber_not_red(self):
+        """The grace tier, which needs no probe: one missed poll is not death."""
+        Screen.objects.filter(pk=self.screen_a.pk).update(
+            last_seen=Screen.online_cutoff() - timedelta(seconds=1))
+        self.assertIn(
+            "screenAlpha",
+            {s.name for s in self._rows(self._changelist(status=ScreenStatus.ATTENTION))})

@@ -1,5 +1,4 @@
 import json
-from datetime import timedelta
 
 from django.conf import settings
 from django.contrib import admin
@@ -11,7 +10,6 @@ from django.db.models import Count
 from django.http import HttpResponseBadRequest, HttpResponseRedirect
 from django.templatetags.static import static
 from django.urls import path, reverse
-from django.utils import timezone
 from django.views.decorators.http import require_POST
 from unfold.admin import ModelAdmin
 from unfold.decorators import display
@@ -293,7 +291,8 @@ def dashboard_callback(request, context):
     Every count respects the active team via ``scope_to_active_team`` — the same
     helper the changelists use — so users only ever see their own team's totals
     (superusers in ALL_TEAMS mode see global totals)."""
-    from screens.models import Playlist, Schedule, Screen, Source
+    from screens.models import (
+        Playlist, Schedule, Screen, ScreenStatus, Source, StatusReason)
     from screens.team_scope import scope_to_active_team
 
     screens_qs = scope_to_active_team(Screen.objects.all(), request)
@@ -301,11 +300,24 @@ def dashboard_callback(request, context):
     schedules_qs = scope_to_active_team(Schedule.objects.all(), request)
     sources_qs = scope_to_active_team(Source.objects.all(), request)
 
-    # "Online" mirrors Screen.online(): last_seen within the last minute.
-    online_cutoff = timezone.now() - timedelta(minutes=1)
-    screens_total = screens_qs.count()
-    screens_online = screens_qs.filter(last_seen__gte=online_cutoff).count()
-    screens_offline = screens_total - screens_online
+    # Counted off the same with_status() annotation the changelist badge and
+    # filter use, so the doughnut cannot disagree with them. This used to
+    # re-hardcode `now - 1 minute`, which was the only copy of the online cutoff
+    # living outside Screen.
+    by_status = {
+        row["derived_status"]: row["n"]
+        for row in (screens_qs.with_status()
+                    .values("derived_status")
+                    # distinct=True because team scoping joins the teams M2M;
+                    # today's single-team filter cannot duplicate a row, but a
+                    # plain Count would silently start double-counting if that
+                    # ever became a teams__in.
+                    .annotate(n=Count("id", distinct=True)))
+    }
+    screens_online = by_status.get(ScreenStatus.ONLINE, 0)
+    screens_attention = by_status.get(ScreenStatus.ATTENTION, 0)
+    screens_offline = by_status.get(ScreenStatus.OFFLINE, 0)
+    screens_total = screens_online + screens_attention + screens_offline
 
     # Content broken down by type (Image / Video / Website).
     type_colors = {
@@ -320,14 +332,22 @@ def dashboard_callback(request, context):
         for key, label in Source.types
     ]
 
-    # last_seen has auto_now_add, so it is never null; "< cutoff" == not online.
-    offline_screens = [
+    # Amber first, then red — see ScreenQuerySet.needing_attention(). The
+    # "since" figure comes from recorded history and lags the live status by up
+    # to one check_screens cycle, so it is only used while the two agree;
+    # otherwise the heartbeat, which is always current, is shown instead.
+    attention_screens = [
         {
             "name": s.name or f"Screen #{s.pk}",
+            "status": s.derived_status,
+            # From the annotation, not status_reason_label(), so the word and
+            # the badge come from the same evaluation of the tiers.
+            "reason": StatusReason(s.derived_reason).label if s.derived_reason else "",
+            "since": s.status_since if s.recorded_status == s.derived_status else None,
             "last_seen": s.last_seen,
             "url": reverse("admin:screens_screen_change", args=[s.pk]),
         }
-        for s in screens_qs.filter(last_seen__lt=online_cutoff).order_by("last_seen")[:5]
+        for s in screens_qs.needing_attention()[:5]
     ]
 
     context.update({
@@ -336,11 +356,13 @@ def dashboard_callback(request, context):
 
         "screens_total": screens_total,
         "screens_online": screens_online,
+        "screens_attention": screens_attention,
         "screens_offline": screens_offline,
         "screens_url": reverse("admin:screens_screen_changelist"),
         "screens_chart_data": _doughnut_data(
-            ["Online", "Offline"], [screens_online, screens_offline],
-            ["#22c55e", "#ef4444"],
+            ["Online", "Needs attention", "Offline"],
+            [screens_online, screens_attention, screens_offline],
+            ["#22c55e", "#f59e0b", "#ef4444"],
         ),
 
         "playlists_count": playlists_qs.count(),
@@ -357,7 +379,7 @@ def dashboard_callback(request, context):
             [c["color"] for c in content_by_type],
         ),
 
-        "offline_screens": offline_screens,
+        "attention_screens": attention_screens,
 
         "can_add_source": request.user.has_perm("screens.add_source"),
         "can_add_playlist": request.user.has_perm("screens.add_playlist"),

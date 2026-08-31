@@ -312,10 +312,11 @@ def view_playlist_tree_json(request):
 
 
 def _get_meta(request, screen):
-    if screen.schedule is None:
-        return JsonResponse(_UNCONFIGURED_META)
-
-    playlist = screen.schedule.get_playlist()
+    # Stamped before the unconfigured branch below, not after it. A screen with
+    # no schedule yet is still polling perfectly happily, and stamping only on
+    # the configured path meant it read offline for as long as it sat
+    # unconfigured -- a device that is working being reported as dark.
+    #
     # save(update_fields=[...]) rather than a plain save(): Model._save_table
     # filters the field list by update_fields *before* calling field.pre_save(),
     # so Screen.last_updated's auto_now never fires. This is the 60-second
@@ -331,6 +332,11 @@ def _get_meta(request, screen):
     # the read and this write, where .update() silently affected zero rows.
     screen.last_seen = timezone.now()
     screen.save(update_fields=["last_seen"])
+
+    if screen.schedule is None:
+        return JsonResponse(_UNCONFIGURED_META)
+
+    playlist = screen.schedule.get_playlist()
 
     if screen.has_ticker():
         # Match the sentinel returned by /api/screen so outer Vue's diff stays quiet

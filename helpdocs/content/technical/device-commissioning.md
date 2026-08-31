@@ -109,3 +109,16 @@ poll a URL directly, returning `AVAILABLE`, `WARNING` or `BUSY`.
    [Reading the dashboard](help:users/dashboard).
 5. For room displays: bookings match what's in Outlook.
 6. If a status light is fitted, it matches the screen.
+
+!!! note "A screen with no schedule still reports online"
+    Registering a display marks it as reporting as soon as it polls, whether or
+    not it has been given a schedule yet. So step 4 confirms the device is
+    talking to the service — it does not confirm anything is scheduled to play.
+    A registered screen sitting at "not configured" is expected, and shows
+    online while it waits.
+
+    Conversely, a screen you have just registered that shows **needs attention**
+    with "responds to ping but is not reporting" has a device on the network at
+    that address whose browser isn't loading the page — a kiosk that hasn't been
+    pointed at the right URL, most often. See
+    [Screen reachability checks](help:screen-reachability).

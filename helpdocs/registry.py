@@ -148,8 +148,8 @@ PAGES = (
     ),
     Page(
         audience=USERS, slug='screens', section='Scheduling & screens',
-        summary='Adding a screen, previewing what it shows, and understanding '
-                'Online vs Offline.',
+        summary='Adding a screen, previewing what it shows, and reading its '
+                'status when it stops reporting.',
         admin_url_names=(
             'screens_screen_changelist',
             'screens_screen_change',
@@ -210,7 +210,13 @@ PAGES = (
     Page(
         audience=TECHNICAL, slug='player-api', section='Displays & devices',
         summary='The endpoints a display device calls, and how the heartbeat '
-                'drives Online/Offline.',
+                'drives screen status.',
+    ),
+    Page(
+        audience=TECHNICAL, slug='screen-reachability', section='Displays & devices',
+        summary='Pinging screens that have stopped reporting, what it needs to '
+                'work, and the status history it records.',
+        permissions=('screens.view_screen',),
     ),
     Page(
         audience=TECHNICAL, slug='room-displays', section='Room integration',

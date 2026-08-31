@@ -48,16 +48,33 @@ Same underlying cause. A request that looks like a browser asking for a page is
 sent to the sign-in page rather than shown a bare error, on the assumption that a
 person has wandered onto a display URL. Devices requesting data get the 403.
 
-### Screens show offline but are clearly working
+### Screens aren't reporting but are clearly working
 
-Online status comes solely from the device polling the heartbeat endpoint. If
-displays are showing correct content but reporting offline, they are rendering a
+Reporting comes solely from the device polling the heartbeat endpoint. If
+displays are showing correct content but not reporting, they are rendering a
 cached page and no longer polling — usually an old browser that has stopped
 running the page's scripts. Reload the device.
+
+With reachability checking on, this shows as **Needs attention** with the reason
+"responds to ping but is not reporting", which is exactly this case: the box
+answers, the page doesn't. With it off the same display shows as **Offline**,
+indistinguishable from one that is unplugged — the single strongest argument for
+turning it on. See [Screen reachability checks](help:screen-reachability).
 
 Check by requesting the heartbeat endpoint for that screen yourself; see
 [What display devices call](help:player-api). Note that doing so marks the screen
 as seen, so do it after you've noted the timestamp, not before.
+
+### Every screen shows "no contact" and none show "needs attention"
+
+Reachability checking is either turned off or cannot run. The reason
+distinguishes them: "no contact and no ping response" means the system asked and
+got nothing, so probing is working and the devices really are unreachable. Plain
+"no contact" means nothing asked at all.
+
+The usual cause of the latter is `ping` missing from the image, which the worker
+logs once per cycle. See
+[Screen reachability checks](help:screen-reachability).
 
 ### One display is fine, another on the same wall isn't
 

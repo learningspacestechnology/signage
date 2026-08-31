@@ -5,10 +5,10 @@ symptom that matches.
 
 ## The screen is blank, or stuck on one thing
 
-**Check whether the screen is online.** Go to **Screens** and look at the tick or
-cross. If it's offline, the display isn't reaching the system at all — the
-content is not the problem. See
-[the offline checklist](#a-screen-shows-as-offline) below.
+**Check the screen's status.** Go to **Screens** and read the **Status** and
+**Detail** columns. If it isn't **Online**, the display isn't reaching the system
+at all — the content is not the problem. See
+[the status checklist](#a-screen-isnt-reporting) below.
 
 **Check the schedule is pointing somewhere sensible.** Open the screen, note its
 schedule, and open that. Does its default playlist have content in it? Is a rule
@@ -63,17 +63,46 @@ That page prints the device's address on screen. Read it off, then either:
 - open the existing screen record and correct its address, if the device's
   address has changed.
 
-## A screen shows as offline
+## A screen isn't reporting
 
-In rough order of likelihood:
+Read the **Detail** column first. It tells you which of these you are dealing
+with, and they call for completely different things.
 
-1. **The display is off, asleep, or its browser has been closed.** Check it
-   physically.
+### "Stopped reporting recently"
+
+It missed its last check-in and nothing more. Wait a minute and reload before
+doing anything — a display that restarts briefly looks exactly like this.
+
+### "Responds to ping but is not reporting"
+
+The device is powered on and on the network. What has stopped is the software
+showing your content, almost always the browser. In order:
+
+1. **Restart the display.** This fixes the large majority: a crashed browser, a
+   closed window, an error page, or a page sitting on old content with its
+   scripts stopped.
+2. **Check what's actually on the screen.** An error page or a stale image tells
+   you it never recovered from something; a black screen with the device
+   powered on usually means the browser isn't running at all.
+3. **If it comes back and goes again**, open the screen and look at its status
+   history under **Status**. A screen flapping every few minutes is a different
+   problem from one that failed once — mention that when you report it.
+
+### "No contact", or "No contact and no ping response"
+
+Nothing suggests the device is alive. In rough order of likelihood:
+
+1. **The display is off, asleep, or unplugged.** Check it physically.
 2. **Its address has changed.** If the display is showing the "not configured"
    page, this is what happened. Read the new address off the screen and update
    the record.
 3. **It's lost network connectivity.** Nothing you can fix from here — ask
    whoever looks after the network.
+
+!!! note
+    "No contact" without the ping part means nobody has checked whether the
+    device is reachable, so a display with a dead browser will show here rather
+    than as needing attention. See [Managing screens](help:screens).
 
 ## An upload was rejected
 

@@ -14,6 +14,8 @@ job" apart from "actually broken".
 | Pull room bookings | {{ config.ROOM_EVENT_SCHEDULE }} | Fetches today's bookings for every room with a calendar address |
 | Clean up old events | {{ config.ROOM_CLEANUP_SCHEDULE }} | Deletes bookings more than two days old |
 | Sync O365 rooms | {{ config.ROOM_SYNC_SCHEDULE }} | Rebuilds the tenant room inventory and flags problems |
+| Check screens | {{ config.SCREEN_CHECK_SCHEDULE }} | Pings screens that have stopped reporting, and records status changes |
+| Clean up status history | daily at 03:30 | Deletes screen status changes older than {{ config.SCREEN_HISTORY_DAYS }} days |
 
 !!! warning "Expiry deletes, it doesn't hide"
     The content cleanup job removes the record **and the uploaded file**. There is
@@ -57,6 +59,11 @@ Be careful what you disable:
 - Disabling **Clean up content** means expired content keeps playing.
 - Disabling **Update playlists** means content with a future start date never
   appears.
+- Disabling **Check screens** does not break status — online/offline still work,
+  because they are read from the heartbeat live. What stops is the **Needs
+  attention** state and the status history, so every failing display looks
+  equally dead and nothing records when it started. See
+  [Screen reachability checks](help:screen-reachability).
 
 ## Running something now
 
@@ -93,6 +100,8 @@ job set for `02:15` runs at quarter past two by a local clock all year round.
 | Room displays are showing yesterday's bookings | Pull room bookings |
 | New rooms in the tenant never appear | Sync O365 rooms |
 | Old schedule rules are piling up | Clean up schedule rules |
+| No screen ever shows "needs attention" | Check screens |
+| A screen's status history stops at some date | Check screens |
 
 In each case check **Task Results** first. A failing job with a traceback tells
 you far more than the symptom does.

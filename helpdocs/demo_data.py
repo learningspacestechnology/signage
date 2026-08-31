@@ -69,7 +69,7 @@ def seed():
     """Populate the current database. Returns ids the shot specs interpolate."""
     from screens.models import (
         Playlist, PlaylistEntry, PlaylistRelation, Schedule, ScheduleRule,
-        Screen, Source, Team, TeamMembership,
+        Screen, ScreenStatus, ScreenStatusEvent, Source, Team, TeamMembership,
     )
     from room_schedules.models import (
         Building, Event, IpAddress, O365Room, Room, RoomGroup,
@@ -228,22 +228,63 @@ def seed():
     science_schedule.teams.add(demo_team)
 
     # ---- Screens ---------------------------------------------------------
-    # Fixed last_seen values, so the dashboard's online/offline split and the
-    # offline watchlist look the same on every capture run.
+    # Fixed last_seen values, so the dashboard's status split and the watchlist
+    # look the same on every capture run. `ping_ago` is how long since a
+    # successful probe, or None for a screen that was probed and did not answer;
+    # between them the specs below cover all three states, so no screenshot
+    # shows a two-colour version of a three-colour feature.
     screen_specs = [
-        ('Riverside Library — Foyer', '10.0.10.11', schedule, datetime.timedelta(seconds=5)),
-        ('Riverside Library — Level 2', '10.0.10.12', schedule, datetime.timedelta(seconds=12)),
-        ('Kelvin Building — Entrance', '10.0.20.11', science_schedule, datetime.timedelta(seconds=8)),
-        ('Kelvin Building — Cafe', '10.0.20.12', science_schedule, datetime.timedelta(hours=6)),
-        ('Sports Centre — Reception', '10.0.30.11', schedule, datetime.timedelta(days=3)),
+        ('Riverside Library — Foyer', '10.0.10.11', schedule,
+         datetime.timedelta(seconds=5), None),
+        ('Riverside Library — Level 2', '10.0.10.12', schedule,
+         datetime.timedelta(seconds=12), None),
+        ('Kelvin Building — Entrance', '10.0.20.11', science_schedule,
+         datetime.timedelta(seconds=8), None),
+        # Amber: alive on the network, but its player has stopped.
+        ('Kelvin Building — Cafe', '10.0.20.12', science_schedule,
+         datetime.timedelta(hours=6), datetime.timedelta(minutes=2)),
+        # Red: probed, and nothing came back.
+        ('Sports Centre — Reception', '10.0.30.11', schedule,
+         datetime.timedelta(days=3), None),
     ]
     screens = []
-    for name, ip, sched, ago in screen_specs:
+    for name, ip, sched, ago, ping_ago in screen_specs:
         screen = Screen.objects.create(name=name, ip=ip, schedule=sched)
         screen.teams.add(demo_team)
         # last_seen is auto_now_add, so it has to be set after creation.
-        Screen.objects.filter(pk=screen.pk).update(last_seen=now - ago)
+        Screen.objects.filter(pk=screen.pk).update(
+            last_seen=now - ago,
+            # Only the non-reporting screens are ever probed, matching what
+            # check_screens actually does.
+            last_ping_ok=now - ping_ago if ping_ago else None,
+            last_ping_attempt=(
+                now - datetime.timedelta(minutes=2)
+                if ago > datetime.timedelta(minutes=1) else None),
+        )
         screens.append(screen)
+
+    # A little history, so the screen page's Status panel and the "since"
+    # labels are not empty in captures.
+    #
+    # The transition into a screen's current state is stamped at its last
+    # check-in, since that is the moment it stopped reporting -- otherwise the
+    # captured "since 7 hours ago" would sit next to a "last seen 3 days ago"
+    # and read as a contradiction. Written oldest first, matching the order
+    # check_screens appends in and the assumption cleanup_status_events makes
+    # when it picks out each screen's latest row.
+    for (_name, _ip, _sched, ago, _ping_ago), screen in zip(screen_specs, screens):
+        screen.refresh_from_db()
+        status, reason = screen.status_and_reason()
+        if status == ScreenStatus.ONLINE:
+            ScreenStatusEvent.objects.create(
+                screen=screen, status=status, reason=reason,
+                at=now - datetime.timedelta(hours=7))
+            continue
+        ScreenStatusEvent.objects.create(
+            screen=screen, status=ScreenStatus.ONLINE, reason='',
+            at=now - ago - datetime.timedelta(hours=2))
+        ScreenStatusEvent.objects.create(
+            screen=screen, status=status, reason=reason, at=now - ago)
 
     ticker_screen = screens[0]
     ticker_screen.ticker_enabled = True

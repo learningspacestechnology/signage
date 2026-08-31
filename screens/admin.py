@@ -6,7 +6,9 @@ from django.conf import settings
 from django.urls import re_path
 from django.contrib import admin
 from django.core.exceptions import ValidationError
+from django.template.loader import get_template
 from django.template.response import TemplateResponse
+from django.utils.timesince import timesince
 from unfold.admin import ModelAdmin, TabularInline, StackedInline
 from unfold.decorators import display
 
@@ -18,7 +20,9 @@ from screens.models import (
     Schedule,
     ScheduleRule,
     Screen,
+    ScreenStatus,
     Source,
+    StatusReason,
     Team,
     TeamMembership,
 )
@@ -383,44 +387,64 @@ INTERSPERSED_FIELDS = ('interspersed_playlist', 'interspersed_rate')
 INTERSPERSED_UNAVAILABLE_FIELD = 'interspersed_unavailable'
 
 
-class ScreenOnlineFilter(admin.SimpleListFilter):
-    """Filter the screens list by the same tick the Online column shows.
+class ScreenStatusFilter(admin.SimpleListFilter):
+    """Filter the screens list by the same badge the Status column shows.
 
-    A snapshot, not a saved state: `Screen.online_cutoff` moves with the clock,
-    so the answer is whatever was true when the page was rendered. That is what
-    the operator wants here — "what is dark right now" — but it does mean two
-    loads a minute apart can legitimately differ.
+    A snapshot, not a saved state: the cutoffs move with the clock, so the
+    answer is whatever was true when the page was rendered. That is what the
+    operator wants here — "what needs looking at right now" — but it does mean
+    two loads a minute apart can legitimately differ.
+
+    Filters on the annotation from `ScreenQuerySet.with_status()` rather than
+    rebuilding the conditions, so the badge and the filter cannot disagree.
     """
 
-    title = "online status"
-    parameter_name = "online"
+    title = "status"
+    parameter_name = "status"
 
     def lookups(self, request, model_admin):
-        return (('1', "Online"), ('0', "Offline"))
+        return ScreenStatus.choices
 
     def queryset(self, request, queryset):
-        if self.value() == '1':
-            return queryset.filter(last_seen__gte=Screen.online_cutoff())
-        if self.value() == '0':
-            return queryset.exclude(last_seen__gte=Screen.online_cutoff())
+        value = self.value()
+        if value in ScreenStatus.values:
+            return queryset.filter(derived_status=value)
         return queryset
+
+
+#: How many past status changes the screen page shows. A screen that flaps can
+#: accumulate rows all the way to the retention limit, and nobody reads past
+#: the recent ones.
+STATUS_HISTORY_SHOWN = 15
 
 
 @admin.register(Screen)
 class ScreenAdmin(TeamScopedAdminMixin, ModelAdmin):
-    readonly_fields = ('screen_preview', INTERSPERSED_UNAVAILABLE_FIELD)
-    list_display = ('name', 'ip', 'show_online', 'last_seen', 'schedule', 'show_teams')
+    readonly_fields = ('screen_preview', INTERSPERSED_UNAVAILABLE_FIELD,
+                       'show_status', 'show_status_detail', 'status_history',
+                       'last_seen', 'last_ping_ok', 'last_ping_attempt')
+    list_display = ('name', 'ip', 'show_status', 'show_status_detail', 'last_seen',
+                    'schedule', 'show_teams')
     search_fields = ('name', 'ip')
     # RelatedOnly, not a bare 'schedule': the stock related filter lists every
     # schedule on the system regardless of team, so a user saw — and could
     # filter by — other teams' schedules, every one of which matched nothing.
     # Limiting to the values present in this admin's own (team-scoped) queryset
     # scopes it correctly and drops the dead options at the same time.
-    list_filter = (('schedule', admin.RelatedOnlyFieldListFilter), ScreenOnlineFilter)
+    list_filter = (('schedule', admin.RelatedOnlyFieldListFilter), ScreenStatusFilter)
     list_select_related = ('schedule',)
     fieldsets = (
         (None, {
             'fields': ('name', 'schedule', 'ip', 'teams', 'screen_preview'),
+        }),
+        ('Status', {
+            'fields': ('show_status', 'show_status_detail',
+                       'last_seen', 'last_ping_ok', 'last_ping_attempt',
+                       'status_history'),
+            'description': "Worked out live from the two signals below, not stored. "
+                           "Last seen is when the player last checked in; the ping "
+                           "times are only filled in when reachability probing is "
+                           "turned on.",
         }),
         ('Interspersed content', {
             'fields': INTERSPERSED_FIELDS,
@@ -432,6 +456,29 @@ class ScreenAdmin(TeamScopedAdminMixin, ModelAdmin):
             'fields': TICKER_GATE_FIELDS + TICKER_TEXT_FIELDS,
         }),
     )
+
+    def get_queryset(self, request):
+        # with_status() so the badge, the detail column and the sort all read
+        # one annotation rather than each screen recomputing its own.
+        return super().get_queryset(request).with_status()
+
+    @display(description="Status history")
+    def status_history(self, obj):
+        """Recent status changes, rendered rather than run as an inline.
+
+        A read-only TabularInline would be the obvious shape, but the inline
+        formset filters the queryset it is handed by the parent FK, and Django
+        cannot filter a queryset that has already been sliced — so there is no
+        way to cap the rows an inline shows. Rendering it directly keeps the
+        limit and costs one query.
+        """
+        if obj is None or obj.pk is None:
+            return "No history yet."
+        events = list(obj.status_events.all()[:STATUS_HISTORY_SHOWN])
+        if not events:
+            return "No status changes recorded yet."
+        return get_template("screens/screen_status_history.html").render(
+            {"events": events})
 
     def _interspersed_blocked_by_ticker(self, obj):
         """Whether this screen's own interspersed content could play at all.
@@ -500,9 +547,54 @@ class ScreenAdmin(TeamScopedAdminMixin, ModelAdmin):
                 "again once the ticker is turned off. A playlist's own interspersed content "
                 "still plays either way.")
 
-    @display(description="Online", boolean=True)
-    def show_online(self, obj):
-        return obj.online()
+    @display(description="Status", ordering="status_rank", label={
+        "Online": "success",
+        "Needs attention": "warning",
+        "Offline": "danger",
+    })
+    def show_status(self, obj):
+        return ScreenStatus(self._status(obj)).label
+
+    @staticmethod
+    def _status(obj):
+        """This screen's status, from the annotation where there is one.
+
+        Both display methods go through here so the badge and the detail beside
+        it can never come from two different evaluations of the tiers. The
+        annotation is what get_queryset puts there, and judges the whole page
+        against a single clock; the fallback covers a Screen that reached a
+        display method without going through with_status().
+        """
+        annotated = getattr(obj, 'derived_status', None)
+        return annotated if annotated is not None else obj.status()
+
+    @display(description="Detail")
+    def show_status_detail(self, obj):
+        """The reason behind the badge, plus how long it has been that way.
+
+        Amber is only actionable if it says *why* — "responds to ping" sends
+        someone to the player software, "stopped reporting recently" says wait
+        and look again.
+
+        The "since" figure comes from the recorded history, which lags the live
+        status by up to one check_screens cycle, so it is only shown while the
+        two agree. Otherwise it falls back to the heartbeat, which is always
+        current.
+        """
+        annotated_reason = getattr(obj, 'derived_reason', None)
+        if annotated_reason is None:
+            reason = obj.status_reason_label()
+        else:
+            reason = StatusReason(annotated_reason).label if annotated_reason else ""
+
+        since = getattr(obj, 'status_since', None)
+        if since and getattr(obj, 'recorded_status', None) == self._status(obj):
+            when = f"since {timesince(since)} ago"
+        elif obj.last_seen:
+            when = f"last seen {timesince(obj.last_seen)} ago"
+        else:
+            when = ""
+        return " · ".join(part for part in (reason, when) if part) or "—"
 
     @display(description="Teams")
     def show_teams(self, obj):

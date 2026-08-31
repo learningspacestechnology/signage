@@ -94,7 +94,30 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'room_schedules.tasks.sync_o365_rooms',
         'schedule': crontab(minute=15, hour=2),
     },
+    'check-screens-every-5-minutes': {
+        'task': 'screens.tasks.check_screens',
+        'schedule': 300.0,
+    },
+    'cleanup-status-events-daily': {
+        'task': 'screens.tasks.cleanup_status_events',
+        'schedule': crontab(minute=30, hour=3),
+    },
 }
+
+# --- Screen reachability probing -------------------------------------------
+# Whether screens.tasks.check_screens pings screens that have stopped checking
+# in. Off by default: it needs `ping` present in the image (the deploy
+# Dockerfile installs iputils-ping) and a network route to the screen subnet,
+# neither of which can be assumed. With it off, a screen's status comes from
+# the heartbeat alone and the "responds to ping" state simply never occurs.
+SCREEN_PROBE_ENABLED = False
+# Seconds to wait for a single echo reply.
+SCREEN_PROBE_TIMEOUT = 1
+# How many screens are pinged at once.
+SCREEN_PROBE_CONCURRENCY = 16
+# How long ScreenStatusEvent rows are kept by cleanup_status_events. Each
+# screen's most recent transition is exempt regardless of age.
+SCREEN_STATUS_HISTORY_DAYS = 90
 
 ADMIN_SITE_NAME = "Display Screen Admin"
 

@@ -84,3 +84,15 @@ ENTRA_AUTH_ENABLED = False
 # Create a Screen automatically for any unrecognised IP. Convenient during a
 # bulk rollout, noisy the rest of the time.
 # AUTO_MAKE_SCREENS_FOR_NEW_IPS = False
+
+# Ping screens that have stopped checking in, so a device that is alive but
+# whose player has died shows amber rather than red. Needs `ping` on PATH and a
+# route to the screens; a dev container usually has neither, so this is mostly
+# worth turning on to exercise the code against an IP you know answers.
+# SCREEN_PROBE_ENABLED = False
+# SCREEN_PROBE_TIMEOUT = 1
+# SCREEN_PROBE_CONCURRENCY = 16
+
+# How long screen status history is kept. Each screen's latest transition is
+# always kept, however old.
+# SCREEN_STATUS_HISTORY_DAYS = 90

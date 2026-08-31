@@ -20,7 +20,8 @@ from django.test import Client, TestCase, override_settings
 
 from screens.models import Playlist, PlaylistEntry, Schedule, Screen, Source
 from screens.models.playlist import SINGLE_ITEM_HOLD_SECONDS
-from screens.views import render_last_updated, render_playlist_json
+from screens.views import (
+    _UNCONFIGURED_META, render_last_updated, render_playlist_json)
 
 
 def web_source(url):
@@ -318,12 +319,28 @@ class PlayerEndpointTests(TestCase):
 
     def test_polling_meta_marks_the_screen_seen(self):
         """The only thing that sets last_seen, and the whole basis of the
-        dashboard's online/offline split."""
+        dashboard's status split."""
         stale = datetime.datetime(2020, 1, 1, tzinfo=datetime.timezone.utc)
         Screen.objects.filter(pk=self.screen.pk).update(last_seen=stale)
         self.client.get(f"/api/meta/{self.screen.pk}")
         self.screen.refresh_from_db()
         self.assertGreater(self.screen.last_seen, stale)
+
+    def test_a_screen_with_no_schedule_is_still_marked_seen(self):
+        """The unconfigured branch used to return before the stamp, so a screen
+        that was polling perfectly happily read offline for as long as it sat
+        unconfigured -- a working device reported as dark."""
+        stale = datetime.datetime(2020, 1, 1, tzinfo=datetime.timezone.utc)
+        unconfigured = Screen.objects.create(name="new", ip="10.9.9.9", schedule=None)
+        Screen.objects.filter(pk=unconfigured.pk).update(last_seen=stale)
+
+        out = self.client.get(f"/api/meta/{unconfigured.pk}").json()
+
+        unconfigured.refresh_from_db()
+        self.assertGreater(unconfigured.last_seen, stale)
+        self.assertTrue(unconfigured.online())
+        # ...without changing what the player is told.
+        self.assertEqual(out, _UNCONFIGURED_META)
 
     def test_screen_json_carries_the_screen_stream(self):
         out = self.client.get(f"/api/screen/{self.screen.pk}").json()

@@ -134,6 +134,14 @@ SHOTS = (
 
     # ---- Screens ---------------------------------------------------------
     Shot(
+        name='screen-list',
+        # The demo data deliberately seeds one screen of each status, so this
+        # shot shows all three badges and their reasons rather than a
+        # two-colour version of a three-colour feature.
+        path='/admin/screens/screen/',
+        wait_for='#changelist',
+    ),
+    Shot(
         name='screen-form',
         path='/admin/screens/screen/{screen_id}/change/',
         wait_for=FORM,
