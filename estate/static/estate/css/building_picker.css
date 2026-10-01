@@ -1,0 +1,20 @@
+/*
+ * The screen form's Building box groups buildings under their campus.
+ *
+ * select2 renders a group as a .select2-results__option that *contains* its
+ * buildings, and Unfold styles every .select2-results__option:hover with a
+ * background. Hovering one building therefore also hovers its campus, and the
+ * whole campus block lights up as if every building in it were highlighted.
+ * Put the group back to its resting look; the hovered building keeps its own.
+ *
+ * Specificity (0,5,0) and (0,5,1) out-rank Unfold's (0,4,0) hover rules in
+ * both themes, so load order does not matter.
+ */
+.select2-container.select2-container--admin-autocomplete .select2-results__option[role="group"]:hover {
+    background-color: transparent;
+    color: var(--color-font-default-light);
+}
+
+html.dark .select2-container.select2-container--admin-autocomplete .select2-results__option[role="group"]:hover {
+    color: var(--color-font-default-dark);
+}

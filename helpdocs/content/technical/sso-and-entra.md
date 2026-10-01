@@ -37,9 +37,9 @@ reverse.
    with an unusable password.
 7. First and last name are filled in from Microsoft, but **only if both are
    currently blank** — so a name you have corrected by hand is never overwritten.
-8. Access is applied. **By default a newly created account gets no staff status
-   and no team**, and is therefore shown the "account not configured" page rather
-   than being signed in.
+8. Access is applied. **By default a newly created account gets no staff status,
+   no team and no location access**, and is therefore shown the "account not
+   configured" page rather than being signed in.
 
 That last step is the safe default: a stranger in the tenant who finds the URL
 gets an account record and nothing else.
@@ -53,7 +53,10 @@ already exists — the sign-in attempt created it.
 2. Tick **Staff status**.
 3. Assign at least one **Team**. Without one they'll be blocked again, with a
    different message.
-4. Save, and ask them to sign in again.
+4. Save, then add them to a **location group**, or to the **All locations**
+   group. Without either they can sign in but see no screens. See
+   [Location access](help:location-access).
+5. Ask them to sign in again.
 
 ## Other sign-in failures
 
@@ -94,3 +97,9 @@ staff status — is set at deployment time and is not editable in the interface.
 
 Changing any of it is a deployment request. Say which of the two registrations
 you mean.
+
+!!! note "Auto-granted staff status still sees no screens"
+    A deployment can be configured to give new accounts staff status and a
+    default team automatically. There is no equivalent for location access, so
+    such an account signs straight in but sees no screens until someone adds it
+    to a location group or to **All locations**.

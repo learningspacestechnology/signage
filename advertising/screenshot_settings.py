@@ -43,6 +43,12 @@ O365_TENANT_ID = 'capture-placeholder-tenant-id'
 O365_DELEGATED_USERNAME = None
 O365_DELEGATED_PASSWORD = None
 
+# Blank, so estate.tasks.sync_estate refuses to run rather than reaching the
+# real Learning Spaces Datastore. The estate rows a capture needs are seeded
+# directly by demo_data instead.
+LSD_API_KEY = ''
+LSD_API_BASE_URL = 'https://lsd.capture-placeholder.invalid/api'
+
 # Renders the "Sign in with Microsoft" button on the login page without any of
 # it being able to reach Microsoft.
 ENTRA_AUTH_ENABLED = True

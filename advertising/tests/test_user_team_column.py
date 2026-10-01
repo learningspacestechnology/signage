@@ -6,6 +6,7 @@ from django.test import Client, TestCase
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
+from estate.models import LocationGroup, LocationGroupMembership
 from screens.models import Team, TeamMembership
 
 
@@ -58,13 +59,16 @@ class UserTeamColumnTests(TestCase):
         self.assertEqual(len(resp.context["cl"].result_list), 1)
 
     def test_column_does_not_query_per_row(self):
-        # The column reads each row's teams, so without the prefetch on the
-        # changelist queryset this grows with the number of users.
+        # The Teams and Locations columns read each row's teams and location
+        # groups, so without the prefetch and annotation on the changelist
+        # queryset this grows with the number of users.
+        places = LocationGroup.objects.create(name="Library buildings")
         self.client.get(self.url)  # warm the content-type cache the first hit fills
         before = self._query_count()
         for i in range(5):
             extra = User.objects.create_user(f"extra{i}", f"e{i}@x.com")
             TeamMembership.objects.create(user=extra, team=self.library)
+            LocationGroupMembership.objects.create(user=extra, group=places)
         self.assertEqual(self._query_count(), before)
 
     def _query_count(self):

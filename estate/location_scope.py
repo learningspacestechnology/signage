@@ -1,0 +1,130 @@
+"""Scoping querysets to the locations a request's user may see.
+
+See `estate.models.access` for the model. The rules:
+
+- Superusers and holders of ``estate.access_all_locations`` see everything.
+- Everyone else sees the union of what their location groups grant, and
+  **nothing** if they are in no group. There is deliberately no fail-open
+  branch: unlike `screens.team_scope.scope_to_active_team`, which treats a
+  request the team middleware never touched as "all teams", this depends only
+  on ``request.user``, so it behaves the same on every path.
+- A room grant reveals its building and campus; a building or campus grant
+  reveals everything beneath it.
+
+Every filter here goes through a ``pk__in`` subquery rather than a join. A join
+across the three grant tables would repeat rows once per matching grant, and a
+join from Campus or Building down to rooms would be reused by any ``Count``
+annotated afterwards, silently changing what it counts.
+"""
+
+from django.core.exceptions import FieldDoesNotExist
+from django.db.models import Q
+
+from .models import Building, Campus, LocationGroup, LocationGroupMembership, Room
+
+ACCESS_ALL_PERM = 'estate.access_all_locations'
+
+#: The auth Group migration 0005 creates. Informational: nothing keys on the
+#: name, and an admin may rename it.
+ALL_LOCATIONS_GROUP_NAME = 'All locations'
+
+
+class _AllLocationsSentinel:
+    def __repr__(self):
+        return 'ALL_LOCATIONS'
+
+
+#: Returned by `visible_room_ids` for a user who is not location-restricted.
+#: Compare with ``is``.
+ALL_LOCATIONS = _AllLocationsSentinel()
+
+
+def sees_all_locations(request):
+    """Whether the request's user is exempt from location scoping.
+
+    ``has_perm`` already answers True for an active superuser and False for an
+    anonymous or inactive user. Cached on the request, since one page asks
+    many times.
+    """
+    cached = getattr(request, '_sees_all_locations', None)
+    if cached is None:
+        cached = request.user.has_perm(ACCESS_ALL_PERM)
+        request._sees_all_locations = cached
+    return cached
+
+
+def rooms_granted_by(groups):
+    """Every room the given location groups cover, as a lazy Room queryset.
+
+    ``groups`` is anything usable with ``__in`` against LocationGroup pks — a
+    queryset, a ``values()`` subquery or a list.
+
+    Three separate subqueries OR'd together, one per kind of grant, so a room
+    granted twice over (directly and through its building) still appears once.
+    """
+    through = LocationGroup
+    by_room = (through.rooms.through.objects
+               .filter(locationgroup__in=groups).values('room'))
+    by_building = (through.buildings.through.objects
+                   .filter(locationgroup__in=groups).values('building'))
+    by_campus = (through.campuses.through.objects
+                 .filter(locationgroup__in=groups).values('campus'))
+    return Room.objects.filter(
+        Q(pk__in=by_room)
+        | Q(building__in=by_building)
+        | Q(building__in=Building.objects.filter(campus__in=by_campus).values('pk'))
+    )
+
+
+def visible_room_ids(request):
+    """`ALL_LOCATIONS`, or a lazy subquery of the room pks the user may see.
+
+    Kept as a subquery rather than evaluated: a campus grant can cover
+    thousands of rooms, more than SQLite accepts as query parameters.
+    """
+    if sees_all_locations(request):
+        return ALL_LOCATIONS
+    groups = LocationGroupMembership.objects.filter(
+        user_id=request.user.pk).values('group')
+    return rooms_granted_by(groups).order_by().values('pk')
+
+
+def has_any_location(request):
+    """Whether the user can see at least one room."""
+    ids = visible_room_ids(request)
+    return ids is ALL_LOCATIONS or Room.objects.filter(pk__in=ids).exists()
+
+
+def scope_to_locations(qs, request):
+    """Filter a Room, Building, Campus or room-bearing queryset to the user's places.
+
+    A model qualifies as room-bearing through a ForeignKey named ``room`` to
+    `estate.Room` — `screens.Screen` today. Rows with no room drop out for a
+    restricted user, since no grant can cover them. Anything else raises
+    rather than passing through unfiltered.
+    """
+    ids = visible_room_ids(request)
+    if ids is ALL_LOCATIONS:
+        return qs
+    model = qs.model
+    if model is Room:
+        return qs.filter(pk__in=ids)
+    if model is Building:
+        return qs.filter(pk__in=Room.objects.filter(pk__in=ids).values('building'))
+    if model is Campus:
+        return qs.filter(
+            pk__in=Room.objects.filter(pk__in=ids).values('building__campus'))
+    try:
+        field = model._meta.get_field('room')
+    except FieldDoesNotExist:
+        field = None
+    if field is not None and field.many_to_one and field.related_model is Room:
+        return qs.filter(room__in=ids)
+    raise TypeError(f"Don't know how to location-scope {model.__name__}")
+
+
+def scope_screens(qs, request):
+    """Screens the request may see: its active team's, within its locations."""
+    from screens.team_scope import scope_to_active_team
+
+    return scope_to_locations(scope_to_active_team(qs, request), request)

@@ -13,6 +13,25 @@ you are currently working in.
 The dashboard counts work the same way: they are counts *for your current team*,
 not for the whole system.
 
+## Your locations
+
+Screens have a second limit. An administrator may give you access to particular
+**locations** — some campuses, buildings or rooms — rather than the whole
+estate. If so, you see only the screens in those places, and only those places
+in the building and room lists.
+
+The two limits add up: you see a screen only if it is in your current team
+**and** in one of your locations. Content, playlists and schedules aren't tied to
+a place, so locations don't affect them.
+
+Three things follow if your account is limited to locations:
+
+- A screen must have a **Room**. One without a room would disappear from your
+  list as soon as you saved it, so the form won't let you leave it blank.
+- The **Building** and **Room** boxes on a screen offer only your places.
+- If you have no locations at all, the dashboard says so and your screen list is
+  empty. Ask an administrator to add you to a location group.
+
 ## Your current team
 
 The team you're working in is shown at the top of every page.
@@ -79,9 +98,13 @@ The item belongs to a team you're not working in, and it's offered only because
 this shared item already uses it. Leave it alone unless you've agreed the change
 with that team — see *Items shared with another team* above.
 
-**I'm only in one team and something is still missing.**
-Team scoping isn't the cause then — see
-[Something isn't showing on a screen](help:troubleshooting).
+**I can see a building but not all of its rooms.**
+You have been given particular rooms in it rather than the whole building. Ask
+an administrator if you need the rest.
+
+**I'm only in one team and a screen is still missing.**
+It may be in a room outside your locations — see *Your locations* above.
+Otherwise, see [Something isn't showing on a screen](help:troubleshooting).
 
 **I need access to another team.**
 Ask an administrator to add you. Being in two teams means you can switch between

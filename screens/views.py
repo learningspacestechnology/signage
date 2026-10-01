@@ -32,17 +32,27 @@ def _ticker_redirect_payload(screen):
     }
 
 
+#: _get_meta reaches through screen.room.building.campus to report where a
+#: screen is, and it is the 60-second heartbeat for every device in the estate.
+#: Left lazy that is three extra queries per device per minute.
+SCREEN_ROOM_RELATED = ("room__building__campus",)
+
+
 def get_screen(request):
     try:
         referer_match = resolve(urlparse(request.META.get("HTTP_REFERER", "http://example.com/"))[2])
     except Resolver404 as e:
         referer_match = None
     if referer_match and referer_match.url_name == "screens/screen_view":
-        return get_object_or_404(models.Screen, id=referer_match.kwargs["screen_id"])
+        return get_object_or_404(
+            models.Screen.objects.select_related(*SCREEN_ROOM_RELATED),
+            id=referer_match.kwargs["screen_id"])
 
     # screen is from the auto url
     ip = get_client_ip(request)
-    screen = models.Screen.objects.filter(ip=ip).first()
+    screen = (models.Screen.objects
+              .select_related(*SCREEN_ROOM_RELATED)
+              .filter(ip=ip).first())
     if screen:
         return screen
 
@@ -76,7 +86,53 @@ _UNCONFIGURED_PAYLOAD = {
 _UNCONFIGURED_META = {
     "current_playlist": -1,
     "playlist_last_updated": "1970-01-01T00:00:00",
+    # Present so the payload shape is the same for a device we do not
+    # recognise. This is a module-level dict shared with every unconfigured
+    # response, so it must be *copied* rather than mutated when a real screen
+    # needs a room here -- see _get_meta.
+    "room": None,
 }
+
+
+def room_context(screen):
+    """Where this screen physically is, or None when no room is set.
+
+    Every sub-value is independently nullable: most of the datastore's columns
+    are sparsely populated — capacity and coordinates on under a third of
+    rooms, a service provider on well under half — and a screen in a room we
+    know nothing else about must still be able to report the room.
+
+    Nothing in the player reads this yet — it is additive and inert by design.
+    Adding a key cannot affect `playlist_last_updated`, which is the only thing
+    the player diffs, so shipping the shape now costs nothing and makes a later
+    player build free. Wayfinding from the coordinates needs that build; it
+    does not exist today.
+    """
+    room = screen.room
+    if room is None:
+        return None
+    building = room.building
+    campus = building.campus
+    return {
+        "id": room.lsd_id,
+        "name": room.name,
+        "building": {"name": building.name},
+        "campus": {"name": campus.name, "code": campus.code or None},
+        "room_status": room.room_status or None,
+        "capacity": room.capacity,
+        # Open today, per the datastore. Always a bool, never null: the sync
+        # defaults anything but an explicit false to true.
+        "active": room.active,
+        # str() explicitly: the datastore ships these as strings and
+        # DjangoJSONEncoder would render a Decimal as one anyway, but pinning it
+        # here means the JSON type does not change if the model field does.
+        "latitude": str(room.latitude) if room.latitude is not None else None,
+        "longitude": str(room.longitude) if room.longitude is not None else None,
+        "support": {
+            "provider": room.service_provider or None,
+            "voip": room.voip_number,
+        },
+    }
 
 
 def _unconfigured_json(request):
@@ -333,8 +389,15 @@ def _get_meta(request, screen):
     screen.last_seen = timezone.now()
     screen.save(update_fields=["last_seen"])
 
+    room = room_context(screen)
+
     if screen.schedule is None:
-        return JsonResponse(_UNCONFIGURED_META)
+        # Spread rather than mutate: _UNCONFIGURED_META is module-level and
+        # shared with get_meta's no-screen path, so writing into it would leak
+        # this screen's room to every unrecognised device on the network. A
+        # screen with no schedule may perfectly well have a room, which is why
+        # this branch reports one at all.
+        return JsonResponse({**_UNCONFIGURED_META, "room": room})
 
     playlist = screen.schedule.get_playlist()
 
@@ -347,6 +410,7 @@ def _get_meta(request, screen):
             "ticker_enabled": True,
             "ticker_text": screen.ticker_text,
             "ticker_current_playlist": playlist.pk,
+            "room": room,
         })
 
     return JsonResponse({
@@ -354,6 +418,7 @@ def _get_meta(request, screen):
         "playlist_last_updated": render_last_updated(playlist, screen),
         "ticker_enabled": False,
         "ticker_text": "",
+        "room": room,
     })
 
 
@@ -365,5 +430,7 @@ def get_meta(request):
 
 
 def get_meta_screen(request, screen_id):
-    screen = models.Screen.objects.get(id=screen_id)
+    screen = (models.Screen.objects
+              .select_related(*SCREEN_ROOM_RELATED)
+              .get(id=screen_id))
     return _get_meta(request, screen)

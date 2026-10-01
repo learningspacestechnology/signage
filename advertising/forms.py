@@ -4,7 +4,7 @@
 custom `UserAdmin`. It lets an admin pre-create an account for someone who will
 sign in via Microsoft Entra, in a single step: enter their sign-in address as
 the email (username is derived from it), optionally a password (blank -> the
-account can only be used via SSO), plus name / staff access / teams.
+account can only be used via SSO), plus name / staff access / teams / location groups.
 
 The email is the link key: `advertising.entra_auth.EntraOIDCBackend` matches an
 incoming login to an existing user by email (then username), so a stub created
@@ -41,6 +41,13 @@ class PreprovisionUserCreationForm(UnfoldUserCreationForm):
         widget=UnfoldAdminSelect2MultipleWidget,
         help_text="Teams whose content this user can manage.",
     )
+    location_groups = forms.ModelMultipleChoiceField(
+        queryset=User.objects.none(),  # replaced in __init__
+        required=False,
+        widget=UnfoldAdminSelect2MultipleWidget,
+        help_text="Location groups whose places this user can see. Without one "
+        "(or the 'Can see all locations' permission) they see no screens.",
+    )
 
     class Meta(UnfoldUserCreationForm.Meta):
         model = User
@@ -50,9 +57,11 @@ class PreprovisionUserCreationForm(UnfoldUserCreationForm):
         super().__init__(*args, **kwargs)
 
         # Local import: models aren't ready at module import time.
+        from estate.models import LocationGroup
         from screens.models import Team
 
         self.fields["teams"].queryset = Team.objects.all()
+        self.fields["location_groups"].queryset = LocationGroup.objects.all()
 
         # SSO accounts normally have no password; make it optional.
         self.fields["password1"].required = False

@@ -1,0 +1,9 @@
+{% comment %}
+    The "this room is not open today" badge, shared by the screen list's Room
+    column and the per-building screens page so the two cannot drift.
+
+    The classes are Unfold's own warning label (unfold/helpers/label.html),
+    copied rather than included: they are known to exist in its compiled
+    Tailwind bundle, and copying keeps this off a vendor template's private
+    context variables. Words carry the state, not the orange alone.
+{% endcomment %}<span class="inline-block font-semibold h-6 leading-6 ml-1 px-2 rounded-default text-[11px] uppercase whitespace-nowrap bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400" title="The Learning Spaces Datastore marks this room as not open today">Inactive</span>

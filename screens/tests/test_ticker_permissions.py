@@ -10,6 +10,7 @@ from django.contrib.auth.models import Permission, User
 from django.contrib.contenttypes.models import ContentType
 from django.test import Client, TestCase
 
+from estate.tests.helpers import grant_all_locations
 from screens.models import Playlist, Schedule, Screen, Team
 
 GATE_FIELDS = ('ticker_enabled', 'ticker_layout')
@@ -58,6 +59,7 @@ class TickerPermissionTests(TestCase):
     def _editor(self, username, *perms):
         """A staff user who can change screens, plus any extra permissions."""
         user = User.objects.create_user(username, f'{username}@x', 'pw', is_staff=True)
+        grant_all_locations(user)
         user.teams.add(self.team)
         screen_ct = ContentType.objects.get_for_model(Screen)
         user.user_permissions.add(

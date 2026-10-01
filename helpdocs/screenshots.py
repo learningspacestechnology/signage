@@ -146,6 +146,12 @@ SHOTS = (
         path='/admin/screens/screen/{screen_id}/change/',
         wait_for=FORM,
         full_page=True,
+        # The sticky submit row stays at the bottom of the first viewport in a
+        # full-page capture, which lands it across the Building/Room pair.
+        run_js=(
+            "const row = document.getElementById('submit-row');"
+            "if (row) { row.style.display = 'none'; }"
+        ),
     ),
     Shot(
         name='ticker-fieldset',
@@ -207,11 +213,28 @@ SHOTS = (
         # table, hiding the Teams column this shot is here to show.
     ),
     Shot(
+        name='location-group-form',
+        path='/admin/estate/locationgroup/{location_group_id}/change/',
+        as_user=ADMIN,
+        wait_for=FORM,
+        full_page=True,
+        # As screen-form: the sticky submit row would land across Buildings.
+        run_js=(
+            "const row = document.getElementById('submit-row');"
+            "if (row) { row.style.display = 'none'; }"
+        ),
+    ),
+    Shot(
         name='user-add',
         path='/admin/auth/user/add/',
         as_user=ADMIN,
         wait_for=FORM,
         full_page=True,
+        # As screen-form: the sticky submit row would land across Password.
+        run_js=(
+            "const row = document.getElementById('submit-row');"
+            "if (row) { row.style.display = 'none'; }"
+        ),
     ),
     Shot(
         name='o365-assigned',
@@ -225,6 +248,33 @@ SHOTS = (
         as_user=ADMIN,
         full_page=True,
     ),
+    # ---- Estate directory ------------------------------------------------
+    Shot(
+        name='estate-room-list',
+        # ADMIN rather than OPERATOR: the Sync estate now button and the
+        # team-scoped screen counts both want the widest view.
+        path='/admin/estate/room/',
+        as_user=ADMIN,
+        wait_for='#changelist',
+    ),
+    Shot(
+        name='estate-building-screens',
+        path='/admin/estate/building-screens/{estate_building_id}/',
+        as_user=ADMIN,
+        wait_for='#content-main',
+        full_page=True,
+    ),
+    Shot(
+        name='estate-room-links',
+        # The demo data leaves one building and one room unlinked, so this
+        # shows both the suggestion badges and a made link rather than only
+        # one of the two states.
+        path='/admin/estate/link-rooms/',
+        as_user=ADMIN,
+        wait_for='#content-main',
+        full_page=True,
+    ),
+
     Shot(
         name='periodic-tasks',
         path='/admin/django_celery_beat/periodictask/',

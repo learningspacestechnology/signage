@@ -63,6 +63,26 @@ ENTRA_AUTH_ENABLED = False
 # ENTRA_ALLOWED_DOMAINS = ''
 
 # ---------------------------------------------------------------------------
+# Learning Spaces Datastore — the estate directory (Campus / Building / Room)
+# ---------------------------------------------------------------------------
+# The real key goes here, in this file, which is NOT tracked in git. Never put
+# it in base_settings.py or settings.sample.py. Request one from Learning
+# Spaces Technology; it is sent as a `key` request header.
+#
+# Leave it blank to work on anything else: the nightly sync then refuses to run
+# and nothing else breaks.
+LSD_API_KEY = ''
+# LSD_API_BASE_URL = 'https://lsd.is.ed.ac.uk/api'
+# LSD_SYNC_TIMEOUT = 30
+
+# Reconciliation safety valve — a wrongly filtered feed must not be able to
+# unlink every screen. Below MIN_ROOMS rows, or a shrink of more than
+# MAX_SHRINK_PCT against the current room count, the sync upserts but does not
+# reconcile. (A short read is refused earlier, against the feed's own count.)
+# LSD_SYNC_MIN_ROOMS = 1
+# LSD_SYNC_MAX_SHRINK_PCT = 50
+
+# ---------------------------------------------------------------------------
 # Behaviour you may want to vary while developing
 # ---------------------------------------------------------------------------
 # Upload limits — a hard per-axis reject, not a downscale, so orientation

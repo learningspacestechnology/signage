@@ -169,6 +169,16 @@ class Screen(models.Model):
     )
     ip = models.GenericIPAddressField(
         help_text="The device's network address (IPv4 or IPv6). The system uses it to recognise this physical screen.")
+    # SET_NULL rather than PROTECT deliberately. estate.sync never deletes a
+    # room anything points at -- it flags it missing instead -- so this should
+    # never fire. But if that guard ever failed, PROTECT would make the nightly
+    # sync task raise at its delete step and retry forever, i.e. an outage of
+    # the whole estate mirror rather than one screen losing its location.
+    room = models.ForeignKey(
+        "estate.Room", null=True, blank=True, default=None,
+        on_delete=models.SET_NULL, related_name="screens",
+        help_text="Where this screen physically is, from the estate directory. "
+                  "Leave blank for a screen that is not in a catalogued room.")
     last_seen = models.DateTimeField(auto_now_add=True, blank=True)
     # The screen's half of the publish signal, matching Playlist.last_updated.
     # aggregate_last_updated() in screens/views.py maxes over both, so a change

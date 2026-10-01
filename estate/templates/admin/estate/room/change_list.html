@@ -1,0 +1,35 @@
+{% extends "admin/change_list.html" %}
+{% comment %}
+    Adds a "Sync now" button above the estate room list.
+
+    A POST form rather than a link: the sync mutates, and a GET would let a
+    link prefetch or a refresh queue a run. The view rate-limits dispatch as
+    well, since Alpine's disabled state only covers this one tab.
+
+    Classes are copied from room_schedules' _o365_tabs.html rather than
+    composed freshly — Unfold ships a compiled Tailwind bundle holding only the
+    classes its own templates use, so an arbitrary utility may not exist.
+
+    Only for users who see all locations: the sync refreshes the whole estate,
+    and estate_sync_now_view refuses anyone else.
+{% endcomment %}
+
+{% block object-tools %}
+    <div class="flex items-center gap-2">
+        {% if perms.estate.access_all_locations %}
+        <form method="post" action="{% url 'admin:estate_sync_now' %}"
+              x-data="{ syncing: false }" @submit="syncing = true">
+            {% csrf_token %}
+            <button type="submit"
+                    x-bind:disabled="syncing"
+                    class="font-medium inline-flex items-center gap-2 px-3 py-2 rounded-default justify-center whitespace-nowrap border border-base-200 bg-white shadow-xs text-important dark:border-base-700 dark:bg-transparent hover:bg-base-100/80 dark:hover:bg-base-800/80 disabled:cursor-wait disabled:opacity-70">
+                <span class="material-symbols-outlined text-base" x-show="!syncing">sync</span>
+                <span class="material-symbols-outlined text-base animate-spin" x-show="syncing" x-cloak>progress_activity</span>
+                <span x-show="!syncing">Sync estate now</span>
+                <span x-show="syncing" x-cloak>Syncing&hellip;</span>
+            </button>
+        </form>
+        {% endif %}
+        {{ block.super }}
+    </div>
+{% endblock %}

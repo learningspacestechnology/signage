@@ -121,7 +121,8 @@ walking to the display.
 
 ## Finding screens
 
-On the **Screens** list you can search by **name or IP address**, and filter by:
+On the **Screens** list you can search by **name, IP address, room or building**,
+and filter by:
 
 - **Schedule** — useful for checking which displays are affected before you
   change a schedule. Only schedules actually in use by screens you can see are
@@ -129,6 +130,23 @@ On the **Screens** list you can search by **name or IP address**, and filter by:
 - **Status** — narrows the list to **Online**, **Needs attention** or
   **Offline**. Filtering by **Needs attention** is the quickest way to find the
   displays worth walking to.
+- **Campus** and **Building** — where the screen physically is. Like the
+  schedule filter, only values actually in use by screens you can see are
+  offered, so these two do not appear at all until you have set rooms on
+  screens in more than one building. Choose a campus first and the
+  **Building** filter lists only that campus's buildings.
+- **Support type** — who the University's room record says looks after the
+  screen's room. **Not recorded** finds screens in rooms with none set.
+- **Room** — **In a room**, **No room set** or **In an inactive room**. The
+  second is your commissioning backlog; the third is screens whose room the
+  University says is not open today. If your account is limited to particular
+  locations, you only ever see screens that have a room, so **No room set** is
+  not offered.
+
+The **Building** and **Room** columns show each screen's location; a dash means
+no room has been set, and an **Inactive** badge beside the room name means the
+room is not open today. See [Where a screen is](help:screen-locations) for setting
+one, and for the page listing every screen in a building.
 
 You can also sort by the **Status** column. It sorts by how bad things are
 rather than alphabetically, so one click puts the healthy screens first and a

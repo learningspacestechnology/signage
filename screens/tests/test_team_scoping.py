@@ -5,6 +5,7 @@ from django.forms import modelform_factory
 from django.test import Client, TestCase
 
 from advertising.middleware import ALL_TEAMS
+from estate.tests.helpers import grant_all_locations
 from screens.models import (
     Playlist,
     PlaylistEntry,
@@ -31,8 +32,11 @@ class TeamScopingTests(TestCase):
         self.team_b = Team.objects.create(name="Bravo")
 
         self.user_a = User.objects.create_user('alice', 'a@x', 'pw', is_staff=True)
+        grant_all_locations(self.user_a)
         self.user_b = User.objects.create_user('bob', 'b@x', 'pw', is_staff=True)
+        grant_all_locations(self.user_b)
         self.user_ab = User.objects.create_user('eve', 'ab@x', 'pw', is_staff=True)
+        grant_all_locations(self.user_ab)
         self.super = User.objects.create_superuser('root', 'r@x', 'pw')
         self.user_a.teams.add(self.team_a)
         self.user_b.teams.add(self.team_b)
@@ -148,6 +152,7 @@ class TeamScopingTests(TestCase):
 
     def test_user_with_no_teams_blocked(self):
         no_team_user = User.objects.create_user('lonely', 'l@x', 'pw', is_staff=True)
+        grant_all_locations(no_team_user)
         c = Client()
         c.force_login(no_team_user)
         resp = c.get('/admin/')

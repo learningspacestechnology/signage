@@ -133,6 +133,17 @@ Staff status but no team. Assign one — see
 [Users and teams](help:users-and-teams). They cannot reach any part of the
 interface until you do, including the help pages, so they can't self-serve.
 
+### Someone signs in but sees no screens
+
+Content, playlists and schedules are there; screens are not, and the dashboard
+says they have no locations. They are in neither a location group nor **All
+locations**. Check the **Locations** column on the **Users** list, then see
+[Location access](help:location-access).
+
+If they do have a location group but still see fewer screens than expected, the
+group may grant a building that has since been renamed upstream — the
+**Location groups** list flags it under **Needs review**.
+
 ### Someone has two accounts
 
 The pre-provisioned email didn't match their real sign-in address. Consolidate

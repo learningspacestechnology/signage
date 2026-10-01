@@ -11,7 +11,7 @@ class HelpDocsAccess(models.Model):
     so only the one meaningful permission appears in the Group form.
 
     This is the *capability* layer (Group + Permission), not the *tenancy* layer
-    (Team) — see CLAUDE.md, "Teams (multi-tenancy) vs. Groups (capabilities)".
+    (Team) — see CLAUDE.md, "Teams, location groups and Groups".
     """
 
     # Redundant since `DEFAULT_AUTO_FIELD` was added to `base_settings.py` — that

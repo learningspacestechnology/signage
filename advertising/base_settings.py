@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'screens',
+    'estate',
     'room_schedules',
     'helpdocs',
     'django_celery_beat',
@@ -94,6 +95,12 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'room_schedules.tasks.sync_o365_rooms',
         'schedule': crontab(minute=15, hour=2),
     },
+    # 02:45 keeps the two external integrations from contending, and lands
+    # before cleanup-status-events-daily at 03:30.
+    'sync-estate-daily': {
+        'task': 'estate.tasks.sync_estate',
+        'schedule': crontab(minute=45, hour=2),
+    },
     'check-screens-every-5-minutes': {
         'task': 'screens.tasks.check_screens',
         'schedule': 300.0,
@@ -118,6 +125,28 @@ SCREEN_PROBE_CONCURRENCY = 16
 # How long ScreenStatusEvent rows are kept by cleanup_status_events. Each
 # screen's most recent transition is exempt regardless of age.
 SCREEN_STATUS_HISTORY_DAYS = 90
+
+# --- Learning Spaces Datastore (the estate directory mirror) ---------------
+# estate.tasks.sync_estate walks GET {LSD_API_BASE_URL}/v1/signage/rooms/ with
+# a `key: <api-key>` request header, and mirrors the result into
+# estate.Campus/Building/Room. The feed is paginated (1000 rooms a page, the
+# datastore's cap) and gzipped, so LSD_SYNC_TIMEOUT is a per-page read timeout.
+LSD_API_BASE_URL = 'https://lsd.is.ed.ac.uk/api'
+# A blank key *disables* the sync — the client raises, the task retries and
+# gives up. Deliberately unlike room_schedules/settings.py, which turns a
+# missing optional credential into a total startup failure. The real key goes
+# in the untracked advertising/settings.py, or in .env in production; never here.
+LSD_API_KEY = ''
+LSD_SYNC_TIMEOUT = 30
+# Reconciliation safety valve. A short read is already refused against the
+# feed's declared count; this is the second line, for a response complete by
+# its own count but wrongly filtered upstream, which must not be able to flag
+# or delete the whole estate and unlink every screen. Below MIN_ROOMS rows, or
+# a shrink of more than MAX_SHRINK_PCT against the current room count, the run
+# still upserts but skips reconciliation entirely and logs at ERROR. Refusing
+# to delete is always recoverable; deleting is not.
+LSD_SYNC_MIN_ROOMS = 1
+LSD_SYNC_MAX_SHRINK_PCT = 50
 
 ADMIN_SITE_NAME = "Display Screen Admin"
 
@@ -197,6 +226,47 @@ UNFOLD = {
                     },
                 ],
             },
+            # The estate directory: read-only records mirrored nightly from the
+            # Learning Spaces Datastore, which screens are assigned to. Sits
+            # above "Room Schedules" because that is the order they are used
+            # in, and its entries are prefixed "Estate" because that group has
+            # its own, different, Buildings and Rooms — display-config records,
+            # not a directory of the university's real estate.
+            {
+                "title": "Estate directory",
+                "separator": True,
+                "collapsible": True,
+                "items": [
+                    {
+                        "title": "Campuses",
+                        "icon": "map",
+                        "link": reverse_lazy("admin:estate_campus_changelist"),
+                        "permission": lambda request: request.user.has_perm("estate.view_campus"),
+                    },
+                    {
+                        "title": "Estate buildings",
+                        "icon": "apartment",
+                        "link": reverse_lazy("admin:estate_building_changelist"),
+                        "permission": lambda request: request.user.has_perm("estate.view_building"),
+                    },
+                    {
+                        "title": "Estate rooms",
+                        "icon": "door_front",
+                        "link": reverse_lazy("admin:estate_room_changelist"),
+                        "permission": lambda request: request.user.has_perm("estate.view_room"),
+                    },
+                    {
+                        "title": "Link display rooms",
+                        "icon": "link",
+                        "link": reverse_lazy("admin:estate_room_links"),
+                        "active": lambda request: request.path.startswith("/admin/estate/link-rooms"),
+                        # All locations too: the page lists the whole estate.
+                        "permission": lambda request: (
+                            request.user.has_perm("room_schedules.change_room")
+                            and request.user.has_perm("estate.access_all_locations")),
+                    },
+                ],
+            },
             {
                 "title": "Room Schedules",
                 "separator": True,
@@ -269,6 +339,12 @@ UNFOLD = {
                         "title": "Teams",
                         "icon": "groups",
                         "link": reverse_lazy("admin:screens_team_changelist"),
+                        "permission": lambda request: request.user.is_superuser,
+                    },
+                    {
+                        "title": "Location groups",
+                        "icon": "pin_drop",
+                        "link": reverse_lazy("admin:estate_locationgroup_changelist"),
                         "permission": lambda request: request.user.is_superuser,
                     },
                 ],

@@ -14,6 +14,7 @@ from django.contrib.auth.models import Permission, User
 from django.contrib.contenttypes.models import ContentType
 from django.test import Client, TestCase
 
+from estate.tests.helpers import grant_all_locations
 from screens.models import (
     Playlist,
     PlaylistEntry,
@@ -60,8 +61,10 @@ class CrossTeamPickerTests(TestCase):
         self.team_b = Team.objects.create(name="Bravo")
 
         self.user_a = User.objects.create_user('alice', 'a@x', 'pw', is_staff=True)
+        grant_all_locations(self.user_a)
         self.user_a.teams.add(self.team_a)
         self.user_ab = User.objects.create_user('eve', 'ab@x', 'pw', is_staff=True)
+        grant_all_locations(self.user_ab)
         self.user_ab.teams.add(self.team_a, self.team_b)
         self.super = User.objects.create_superuser('root', 'r@x', 'pw')
         for user in (self.user_a, self.user_ab):
