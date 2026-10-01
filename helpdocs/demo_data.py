@@ -13,7 +13,7 @@ empty for anyone capturing in the afternoon.
 import datetime
 import io
 
-from django.contrib.auth.models import Permission, User
+from django.contrib.auth.models import Group, Permission, User
 from django.core.files.base import ContentFile
 from django.utils import timezone
 
@@ -74,6 +74,15 @@ def seed():
     from room_schedules.models import (
         Building, Event, IpAddress, O365Room, Room, RoomGroup,
     )
+    # Aliased: both apps have a Building and a Room, and they mean different
+    # things — display configuration versus the University's own record.
+    from estate.models import Building as EstateBuilding
+    from estate.models import BuildingLink
+    from estate.models import Campus as EstateCampus
+    from estate.models import LocationGroup, LocationGroupMembership
+    from estate.models import Room as EstateRoom
+    from estate.models import RoomLink
+    from estate.location_scope import ALL_LOCATIONS_GROUP_NAME
 
     now = timezone.now()
 
@@ -100,6 +109,22 @@ def seed():
         operator, 'room_schedules', 'building', 'room', 'roomgroup', 'ipaddress',
     )
     _grant(operator, 'screens.change_ticker_text')
+
+    # Every staff account that predates location groups was put in "All
+    # locations" by estate migration 0005; the operator stands in for one.
+    # Without it the screen list, dashboard and screen form capture empty.
+    all_locations, _ = Group.objects.get_or_create(name=ALL_LOCATIONS_GROUP_NAME)
+    all_locations.permissions.add(Permission.objects.get(
+        content_type__app_label='estate', codename='access_all_locations'))
+    operator.groups.add(all_locations)
+
+    # Limited to a location group (seeded with the estate below), so the Users
+    # list's Locations column shows something other than "All locations".
+    facilities = User.objects.create_user(
+        'demo_facilities', 'demo.facilities@demo.invalid', 'not-a-real-password',
+        first_name='Jo', last_name='Kerr', is_staff=True,
+    )
+    TeamMembership.objects.create(user=facilities, team=demo_team)
 
     # ---- Content ---------------------------------------------------------
     sources = []
@@ -371,6 +396,94 @@ def seed():
     IpAddress.objects.create(ip_address='10.0.50.20', building=building)
     IpAddress.objects.create(ip_address='10.0.50.30', room_group=group)
 
+    # ---- Estate directory ------------------------------------------------
+    # A stand-in for what the nightly Learning Spaces sync would have written,
+    # created directly rather than through estate.sync so no capture run can
+    # reach the real datastore. Names match the display buildings above so the
+    # linking page has something plausible to suggest.
+    estate_campus = EstateCampus.objects.create(
+        name='Riverside Campus', code='RC')
+    estate_library = EstateBuilding.objects.create(
+        key="RVL", name='Riverside Library', campus=estate_campus)
+    estate_kelvin = EstateBuilding.objects.create(
+        key="KLV", name='Kelvin Building', campus=estate_campus)
+    # No screens in this one, so the estate lists show a building at zero and
+    # the changelist filters demonstrably leave it out.
+    EstateBuilding.objects.create(
+        key="SPC", name='Sports Centre', campus=estate_campus)
+
+    # Sparse on purpose: the real feed leaves capacity, support, codes and
+    # location blank on a good share of rooms, and the pages must read
+    # correctly when they are. Two library rooms are inactive — one holding a
+    # screen, one without — so the Inactive badge appears on the screen list
+    # and in both halves of the per-building page.
+    estate_room_specs = [
+        # id, name, building, capacity, room_status, building_code, active
+        ('RVL-0101', 'Seminar Room 1.01', estate_library, 24,
+         'General Teaching', '0501', True),
+        ('RVL-0102', 'Seminar Room 1.02', estate_library, 24,
+         'General Teaching', '0501', True),
+        ('RVL-0214', 'Group Study 2.14', estate_library, 8,
+         'Student Study Space', '0501', False),
+        ('RVL-FOYR', 'Library Foyer', estate_library, None,
+         'Specialist', '', True),
+        # Left with no screen, so the per-building page's "rooms with no
+        # screen" panel is not empty in the capture.
+        ('RVL-0301', 'Reading Room 3.01', estate_library, 60,
+         'Student Study Space', '0501', False),
+        ('KLV-ENTR', 'Kelvin Entrance', estate_kelvin, None,
+         'Specialist', '0612', True),
+        ('KLV-CAFE', 'Kelvin Cafe', estate_kelvin, 40, 'Specialist', '0612', True),
+        ('KLV-PMR', 'Physics Meeting Room', estate_kelvin, 12,
+         'Meeting Space', '0612', True),
+    ]
+    estate_rooms = {}
+    for lsd_id, name, est_building, capacity, status, code, active in estate_room_specs:
+        supported = capacity is not None
+        estate_rooms[lsd_id] = EstateRoom.objects.create(
+            lsd_id=lsd_id, name=name, building=est_building,
+            capacity=capacity, room_status=status, active=active,
+            building_code=code,
+            public_campus='Central' if est_building is estate_library else '',
+            optime_index=500 + len(estate_rooms) if status == 'General Teaching' else None,
+            support_type='Central' if supported else '',
+            service_provider='Demo AV' if supported else '',
+            voip_number=505000 + len(estate_rooms) if supported else None,
+            last_seen_at=now,
+        )
+
+    # Most demo screens get a room; the Sports Centre one is deliberately left
+    # without, so the "No room set" filter and the dashboard's unassigned line
+    # both have something to report.
+    screen_rooms = {
+        'Riverside Library — Foyer': 'RVL-FOYR',
+        'Riverside Library — Level 2': 'RVL-0214',
+        'Kelvin Building — Entrance': 'KLV-ENTR',
+        'Kelvin Building — Cafe': 'KLV-CAFE',
+    }
+    for screen in screens:
+        lsd_id = screen_rooms.get(screen.name)
+        if lsd_id:
+            Screen.objects.filter(pk=screen.pk).update(
+                room=estate_rooms[lsd_id])
+
+    # A whole building plus one room elsewhere, so the form shows both kinds
+    # of grant and the list's summary reads "1 building, 1 room".
+    location_group = LocationGroup.objects.create(
+        name='Kelvin Building and library foyer',
+        description='Facilities team: the Kelvin screens and the library '
+                    'foyer display.')
+    location_group.buildings.add(estate_kelvin)
+    location_group.rooms.add(estate_rooms['RVL-FOYR'])
+    LocationGroupMembership.objects.create(user=facilities, group=location_group)
+
+    # One link already made and one left open, so the linking page shows both
+    # states rather than only the empty one.
+    BuildingLink.objects.create(
+        display_building=building, estate_building=estate_library)
+    RoomLink.objects.create(
+        display_room=rooms[0], estate_room=estate_rooms['RVL-0101'])
+
     # ---- Bookings --------------------------------------------------------
     # Relative to now so every room reads as intended at capture time:
     #   rooms[0] busy, rooms[1] free but starting soon, rooms[2] free and
@@ -432,6 +545,9 @@ def seed():
         'building_id': building.pk,
         'bookable_room_id': rooms[2].pk,
         'group_id': group.pk,
+        'estate_building_id': estate_library.pk,
+        'estate_room_id': estate_rooms['RVL-0101'].pk,
+        'location_group_id': location_group.pk,
     }
 
 
@@ -456,6 +572,9 @@ def _seed_periodic_tasks():
     early, _ = CrontabSchedule.objects.get_or_create(
         minute='15', hour='2', day_of_week='*', day_of_month='*', month_of_year='*',
     )
+    early_estate, _ = CrontabSchedule.objects.get_or_create(
+        minute='45', hour='2', day_of_week='*', day_of_month='*', month_of_year='*',
+    )
 
     interval_tasks = [
         ('Clean up expired content', 'screens.tasks.cleanup_sources'),
@@ -471,6 +590,7 @@ def _seed_periodic_tasks():
         ('Pull room bookings', 'room_schedules.tasks.build_schedule', hourly),
         ('Clean up old events', 'room_schedules.tasks.cleanup_schedule', midnight),
         ('Sync O365 rooms', 'room_schedules.tasks.sync_o365_rooms', early),
+        ('Sync estate', 'estate.tasks.sync_estate', early_estate),
     ]
     for name, task, schedule in crontab_tasks:
         PeriodicTask.objects.get_or_create(

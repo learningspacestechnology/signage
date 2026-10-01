@@ -1,7 +1,7 @@
 # Users and teams
 
 The procedures for getting someone access, changing it, and taking it away. Read
-[How access works](help:access-model) first if you haven't — the two
+[How access works](help:access-model) first if you haven't — the three
 authorisation layers behave differently and this page assumes you know which is
 which.
 
@@ -21,19 +21,24 @@ correctly scoped the first time the person signs in with Microsoft.
    not configured" page.
 5. Choose their **Teams**. This field is only shown to superusers, and it is
    enforced on save, not merely hidden.
-6. **Leave the password blank.** A blank password means the account can only be
+6. Choose their **Location groups** — the places whose screens they will see.
+   Also superuser-only. To let them see every location instead, leave this
+   empty and add them to the **All locations** group once the account exists.
+   See [Location access](help:location-access).
+7. **Leave the password blank.** A blank password means the account can only be
    used through Microsoft sign-in, which is what you want. Only set one for a
    service or test account that must sign in with a password.
-7. Save.
+8. Save.
 
 ![Pre-provisioning a user](screenshot:user-add)
 
 The username is derived from the email address automatically — you don't set it.
 
-!!! warning "Team membership is not optional"
+!!! warning "Team membership and location access are not optional"
     A staff user with no team is locked out of the entire interface, including
-    this documentation. Assign at least one team as part of creating the account,
-    not later.
+    this documentation. A staff user with no location group, and not in **All
+    locations**, can sign in but sees no screens. Assign both as part of
+    creating the account, not later.
 
 ### If the account already exists
 
@@ -63,7 +68,9 @@ access.
 ## Checking who is in which team
 
 The **Users** list has a **Teams** column showing every team an account belongs
-to. To narrow the list to one team, open **Filters** and use **By team**.
+to, and a **Locations** column showing where they can see screens. To narrow the
+list to one team, open **Filters** and use **By team**; **By location access**
+does the same for locations.
 
 ![The users list](screenshot:users-list)
 
@@ -86,7 +93,8 @@ Do not delete the user. Deleting loses the audit trail, and the "created by"
 attribution on their content.
 
 If they're changing role rather than leaving, remove them from the team instead:
-open the team and delete their membership row.
+open the team and delete their membership row. Location groups work the same
+way: remove the member row on the group, or on the user's own page.
 
 ## Managing teams
 

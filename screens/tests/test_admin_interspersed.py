@@ -16,6 +16,7 @@ from django.contrib.auth.models import Permission, User
 from django.contrib.contenttypes.models import ContentType
 from django.test import Client, TestCase
 
+from estate.tests.helpers import grant_all_locations
 from screens.models import (
     Playlist,
     PlaylistEntry,
@@ -40,6 +41,7 @@ class InterspersedAdminTests(TestCase):
         self.team_b = Team.objects.create(name="Bravo")
 
         self.user_a = User.objects.create_user('alice', 'a@x', 'pw', is_staff=True)
+        grant_all_locations(self.user_a)
         self.user_a.teams.add(self.team_a)
         _grant_all_model_perms(
             self.user_a,

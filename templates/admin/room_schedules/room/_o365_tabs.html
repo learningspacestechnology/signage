@@ -1,0 +1,61 @@
+{% load unfold %}
+{% comment %}
+    Project override of room_schedules' own tab strip, adding a third tab
+    linking display rooms to the estate directory.
+
+    A fork of a submodule template, and it is here rather than in the submodule
+    on purpose: room_schedules is shared with consumers that have no `estate`
+    app, and a {% load %} of an estate tag library cannot be made conditional —
+    it would raise TemplateSyntaxError for all of them. TEMPLATES.DIRS is
+    searched before APP_DIRS, so this file shadows the submodule's copy with no
+    submodule edit at all.
+
+    Treat it like the forked Unfold helpers in CLAUDE.md: on a submodule
+    update, re-copy the vendor version and re-apply the one added tab.
+    estate/tests/test_o365_tabs_override.py fails if the two drift.
+{% endcomment %}
+<div class="flex flex-wrap items-center gap-3 border-b border-base-200 dark:border-base-800 pb-3">
+    <div class="flex gap-1">
+        <a href="{{ assigned_url }}"
+           class="inline-flex items-center gap-2 px-4 py-2 rounded-default text-sm font-medium {% if active_tab == 'assigned' %}bg-primary-600 text-white dark:bg-primary-500{% else %}bg-base-100 text-font-default-light hover:bg-base-200 dark:bg-base-800 dark:text-font-default-dark dark:hover:bg-base-700{% endif %}">
+            <span class="material-symbols-outlined text-base">meeting_room</span>
+            Assigned per Building
+        </a>
+        <a href="{{ unassigned_url }}"
+           class="inline-flex items-center gap-2 px-4 py-2 rounded-default text-sm font-medium {% if active_tab == 'unassigned' %}bg-primary-600 text-white dark:bg-primary-500{% else %}bg-base-100 text-font-default-light hover:bg-base-200 dark:bg-base-800 dark:text-font-default-dark dark:hover:bg-base-700{% endif %}">
+            <span class="material-symbols-outlined text-base">help_outline</span>
+            Unassigned
+        </a>
+        {% comment %}
+            Reversed here rather than read from context, so the tab appears on
+            the submodule's own two pages as well as on the estate one — their
+            views know nothing about this app.
+
+            A comment tag rather than the {#...#} form, which is single-line
+            only: spread over several lines it stops being a comment and
+            renders as text across the tab strip.
+
+            Only for users who see all locations: the page lists the whole
+            estate, and room_links_view refuses anyone else.
+        {% endcomment %}
+        {% if perms.estate.access_all_locations %}
+        <a href="{% url 'admin:estate_room_links' %}"
+           class="inline-flex items-center gap-2 px-4 py-2 rounded-default text-sm font-medium {% if active_tab == 'estate' %}bg-primary-600 text-white dark:bg-primary-500{% else %}bg-base-100 text-font-default-light hover:bg-base-200 dark:bg-base-800 dark:text-font-default-dark dark:hover:bg-base-700{% endif %}">
+            <span class="material-symbols-outlined text-base">link</span>
+            Estate links
+        </a>
+        {% endif %}
+    </div>
+
+    <form method="post" action="{{ sync_now_url }}" class="ml-auto" x-data="{ syncing: false }" @submit="syncing = true">
+        {% csrf_token %}
+        <button type="submit"
+                x-bind:disabled="syncing"
+                class="font-medium inline-flex items-center gap-2 px-3 py-2 rounded-default justify-center whitespace-nowrap border border-base-200 bg-white shadow-xs text-important dark:border-base-700 dark:bg-transparent hover:bg-base-100/80 dark:hover:bg-base-800/80 disabled:cursor-wait disabled:opacity-70">
+            <span class="material-symbols-outlined text-base" x-show="!syncing">sync</span>
+            <span class="material-symbols-outlined text-base animate-spin" x-show="syncing" x-cloak>progress_activity</span>
+            <span x-show="!syncing">Sync O365 rooms now</span>
+            <span x-show="syncing" x-cloak>Syncing&hellip;</span>
+        </button>
+    </form>
+</div>

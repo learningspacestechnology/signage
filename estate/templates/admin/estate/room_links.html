@@ -1,0 +1,147 @@
+{% extends "admin/base_site.html" %}
+{% comment %}
+    Link the room_schedules display records to the estate directory.
+
+    Buildings first, then rooms: a display building has to be linked before its
+    rooms can offer suggestions, because room labels like "2.14" are only
+    unambiguous inside a building.
+
+    Suggestions are never pre-selected. Every radio starts unchosen and the
+    full list is always available, so a wrong suggestion cannot be accepted by
+    reflex. Each suggestion carries a word — "Exact name", "Room number",
+    "Strong", "Possible" — so its strength is never conveyed by colour alone.
+{% endcomment %}
+
+{% block content %}
+    <div id="content-main" class="flex flex-col gap-6">
+        {% include "admin/room_schedules/room/_o365_tabs.html" %}
+        {% include "admin/helpdocs/_help_hint_slot.html" %}
+
+        <section class="flex flex-col gap-3">
+            <header class="flex items-baseline gap-3">
+                <h2 class="font-semibold text-lg text-font-important-light dark:text-font-important-dark">Buildings</h2>
+                <span class="text-xs uppercase tracking-wide text-font-subtle-light dark:text-font-subtle-dark">
+                    {{ unlinked_building_count }} still to link
+                </span>
+            </header>
+
+            {% if buildings %}
+                <div class="flex flex-col gap-3">
+                    {% for entry in buildings %}
+                        <div class="flex flex-wrap items-center gap-3 p-3 rounded-default border border-base-200 bg-white dark:border-base-800 dark:bg-base-900">
+                            <span class="font-medium text-font-important-light dark:text-font-important-dark min-w-48">{{ entry.display.name }}</span>
+
+                            {% if entry.link %}
+                                <span class="inline-flex items-center gap-2 text-sm">
+                                    <span class="material-symbols-outlined text-base text-green-600 dark:text-green-400">link</span>
+                                    {{ entry.link.estate_building.name }}
+                                    <span class="text-xs text-font-subtle-light dark:text-font-subtle-dark">{{ entry.link.estate_building.campus.name }}</span>
+                                </span>
+                                <form method="post" class="ml-auto">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="action" value="unlink">
+                                    <input type="hidden" name="link_kind" value="building">
+                                    <input type="hidden" name="link_id" value="{{ entry.link.pk }}">
+                                    <button type="submit" class="cursor-pointer inline-block font-semibold h-6 leading-6 px-2 rounded-default text-[11px] uppercase whitespace-nowrap bg-base-100 text-font-subtle-light hover:bg-base-200 dark:bg-base-800 dark:text-font-subtle-dark dark:hover:bg-base-700">Unlink</button>
+                                </form>
+                            {% else %}
+                                <form method="post" class="flex flex-wrap items-center gap-3 grow">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="action" value="link_building">
+                                    <input type="hidden" name="display_building_id" value="{{ entry.display.pk }}">
+
+                                    {% for suggestion in entry.suggestions %}
+                                        <label class="inline-flex items-center gap-2 text-sm cursor-pointer">
+                                            <input type="radio" name="estate_building_id" value="{{ suggestion.object.pk }}">
+                                            {{ suggestion.object.name }}
+                                            <span class="inline-block font-semibold h-5 leading-5 px-2 rounded-default text-[10px] uppercase whitespace-nowrap bg-base-100 text-font-subtle-light dark:bg-base-800 dark:text-font-subtle-dark">{{ suggestion.badge }}</span>
+                                        </label>
+                                    {% empty %}
+                                        <span class="text-sm text-font-subtle-light dark:text-font-subtle-dark">No close match</span>
+                                    {% endfor %}
+
+                                    <select name="estate_building_id" class="border border-base-200 rounded-default text-sm px-2 py-1 dark:border-base-700 dark:bg-base-900 ml-auto">
+                                        <option value="">Or pick from the whole estate&hellip;</option>
+                                        {% for building in estate_buildings %}
+                                            <option value="{{ building.pk }}">{{ building.campus.name }} — {{ building.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <button type="submit" class="cursor-pointer inline-block font-semibold h-6 leading-6 px-2 rounded-default text-[11px] uppercase whitespace-nowrap bg-primary-600 text-white hover:bg-primary-700 dark:bg-primary-500">Link</button>
+                                </form>
+                            {% endif %}
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p class="text-sm text-font-subtle-light dark:text-font-subtle-dark">There are no display buildings yet.</p>
+            {% endif %}
+        </section>
+
+        <section class="flex flex-col gap-3">
+            <h2 class="font-semibold text-lg text-font-important-light dark:text-font-important-dark">Rooms</h2>
+
+            {% for group in room_groups %}
+                <section class="flex flex-col gap-2">
+                    <header class="flex flex-wrap items-baseline gap-3">
+                        <h3 class="font-medium text-font-important-light dark:text-font-important-dark">{{ group.building.name }}</h3>
+                        {% if group.estate_building %}
+                            <span class="text-xs uppercase tracking-wide text-font-subtle-light dark:text-font-subtle-dark">
+                                matching {{ group.estate_building.name }} — {{ group.candidates|length }} estate room{{ group.candidates|length|pluralize }}
+                            </span>
+                        {% else %}
+                            <span class="text-xs text-amber-700 dark:text-amber-400">Link this building above before linking its rooms</span>
+                        {% endif %}
+                    </header>
+
+                    <div class="flex flex-col gap-2">
+                        {% for entry in group.rooms %}
+                            <div class="flex flex-wrap items-center gap-3 p-3 rounded-default border border-base-200 bg-white dark:border-base-800 dark:bg-base-900">
+                                <span class="font-medium text-font-important-light dark:text-font-important-dark min-w-48">{{ entry.display.label }}</span>
+
+                                {% if entry.link %}
+                                    <span class="inline-flex items-center gap-2 text-sm">
+                                        <span class="material-symbols-outlined text-base text-green-600 dark:text-green-400">link</span>
+                                        {{ entry.link.estate_room.name }}
+                                    </span>
+                                    <form method="post" class="ml-auto">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="action" value="unlink">
+                                        <input type="hidden" name="link_kind" value="room">
+                                        <input type="hidden" name="link_id" value="{{ entry.link.pk }}">
+                                        <button type="submit" class="cursor-pointer inline-block font-semibold h-6 leading-6 px-2 rounded-default text-[11px] uppercase whitespace-nowrap bg-base-100 text-font-subtle-light hover:bg-base-200 dark:bg-base-800 dark:text-font-subtle-dark dark:hover:bg-base-700">Unlink</button>
+                                    </form>
+                                {% elif group.estate_building %}
+                                    <form method="post" class="flex flex-wrap items-center gap-3 grow">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="action" value="link_room">
+                                        <input type="hidden" name="display_room_id" value="{{ entry.display.pk }}">
+
+                                        {% for suggestion in entry.suggestions %}
+                                            <label class="inline-flex items-center gap-2 text-sm cursor-pointer">
+                                                <input type="radio" name="estate_room_id" value="{{ suggestion.object.pk }}">
+                                                {{ suggestion.object.name }}
+                                                <span class="inline-block font-semibold h-5 leading-5 px-2 rounded-default text-[10px] uppercase whitespace-nowrap bg-base-100 text-font-subtle-light dark:bg-base-800 dark:text-font-subtle-dark">{{ suggestion.badge }}</span>
+                                            </label>
+                                        {% empty %}
+                                            <span class="text-sm text-font-subtle-light dark:text-font-subtle-dark">No close match</span>
+                                        {% endfor %}
+
+                                        <select name="estate_room_id" class="border border-base-200 rounded-default text-sm px-2 py-1 dark:border-base-700 dark:bg-base-900 ml-auto">
+                                            <option value="">Or pick from this building&hellip;</option>
+                                            {% for room in group.candidates %}
+                                                <option value="{{ room.pk }}">{{ room.name }}</option>
+                                            {% endfor %}
+                                        </select>
+                                        <button type="submit" class="cursor-pointer inline-block font-semibold h-6 leading-6 px-2 rounded-default text-[11px] uppercase whitespace-nowrap bg-primary-600 text-white hover:bg-primary-700 dark:bg-primary-500">Link</button>
+                                    </form>
+                                {% endif %}
+                            </div>
+                        {% endfor %}
+                    </div>
+                </section>
+            {% empty %}
+                <p class="text-sm text-font-subtle-light dark:text-font-subtle-dark">There are no display rooms yet.</p>
+            {% endfor %}
+        </section>
+    </div>
+{% endblock %}

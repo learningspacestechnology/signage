@@ -447,3 +447,44 @@ room templates still poll it — `room_screen.html:642`, `room_screen_uoe.html:2
 `room_tablet.html:713` — so this is a hot endpoint, not a stale one, and the watch is still
 worth keeping. The 502 itself cannot be reproduced or ruled out from a dev checkout; it needs
 the production nginx log.
+
+---
+
+## 10. Location groups — phase-2 gaps
+
+Found 2026-09-30, when location-based access (`estate.LocationGroup`,
+`estate/location_scope.py`) landed. These were deliberately left out of that change; none
+leaks anything a restricted user could not already reach before location groups existed.
+
+**Room Schedules admin is not location-scoped.** `room_schedules.BuildingAdmin`, `RoomAdmin`,
+`RoomGroupAdmin` and the O365 pages (`o365_assigned_view`, `o365_unassigned_view`) are gated
+by model permissions only, exactly as before. A location-restricted user holding
+`room_schedules.view_room` still sees every display building and room. The O365 pages have
+no permission check at all beyond staff — the sidebar lambda merely hides them.
+
+*Intended fix.* Unregister and re-register the submodule's admins from this project (the
+pattern `advertising/admin.py` already uses for `User`/`Group`), scoping display rows through
+their estate links: a display room is visible if its `RoomLink.estate_room` is in
+`visible_room_ids(request)`; a display building if its `BuildingLink.estate_building` is, or if
+any of its rooms is. **Unlinked display rows would then vanish for restricted users**, so this
+wants the links mostly made first — check `Link display rooms` coverage before shipping it.
+Gate the O365 pages on `sees_all_locations`, as `room_links_view` already is.
+
+**Player and preview URLs are not location-scoped.** `IpAccessControlMiddleware` lets any
+authenticated staff user through to `/api/screen/<id>`, `/screen/<id>` and friends, whatever
+their teams or locations. Pre-existing for teams too; the same fix would cover both.
+
+**Grants are not carried across an upstream building rename.** The sync sees a renamed building
+as a new row, moves the rooms across, and flags the old one `missing_from_source`. A grant on
+the old building then covers nothing. It is surfaced (`stale_grants_q()` → the Location groups
+list's **Needs review** filter, and a superuser dashboard notice) but not repaired. Automatic
+carry-over is possible in `reconcile_estate`: snapshot `{room: building}` for rooms in granted
+buildings before `_sync_rooms`, then after the sweep add the new building to the same groups —
+**but only if it was created in this run**, otherwise add the moved rooms individually, so a
+building merged into an existing larger one does not silently widen access. Campuses need the
+same treatment, since a campus rename re-keys every building on it.
+
+**No `ENTRA_DEFAULT_LOCATION_GROUP_NAME`.** Sites with `ENTRA_AUTO_GRANT_IS_STAFF` and
+`ENTRA_DEFAULT_TEAM_NAME` set now create users who see content but no screens until assigned
+location access. Documented in the help pages; adding the setting follows the three-place rule
+in `CLAUDE.md` plus the deploy repo.

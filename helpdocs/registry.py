@@ -158,6 +158,13 @@ PAGES = (
         permissions=('screens.view_screen',),
     ),
     Page(
+        audience=USERS, slug='screen-locations', section='Scheduling & screens',
+        summary='Recording which room a screen is in, filtering the list by '
+                'campus or building, and seeing every screen in a building.',
+        admin_url_names=('estate_building_screens',),
+        permissions=('screens.view_screen',),
+    ),
+    Page(
         audience=USERS, slug='ticker-tape', section='Scheduling & screens',
         summary='Putting a scrolling message along the bottom of a screen.',
         # Either ticker tier is enough to read this. A plain screen editor holds
@@ -183,8 +190,8 @@ PAGES = (
     # ------------------------------------------------------------ technical ---
     Page(
         audience=TECHNICAL, slug='access-model', section='Access & accounts',
-        summary='Staff, superusers, Groups and Teams — which layer controls what, '
-                'and how they compose.',
+        summary='Staff, superusers, Groups, Teams and location groups — which '
+                'layer controls what, and how they compose.',
     ),
     Page(
         audience=TECHNICAL, slug='users-and-teams', section='Access & accounts',
@@ -194,6 +201,17 @@ PAGES = (
             'auth_user_changelist', 'auth_user_change', 'auth_user_add',
             'auth_group_changelist', 'auth_group_change', 'auth_group_add',
             'screens_team_changelist', 'screens_team_change', 'screens_team_add',
+        ),
+        permissions=('auth.view_user', 'auth.view_group'),
+    ),
+    Page(
+        audience=TECHNICAL, slug='location-access', section='Access & accounts',
+        summary='Limiting someone to particular campuses, buildings or rooms '
+                'with location groups, and what they then see.',
+        admin_url_names=(
+            'estate_locationgroup_changelist',
+            'estate_locationgroup_change',
+            'estate_locationgroup_add',
         ),
         permissions=('auth.view_user', 'auth.view_group'),
     ),
@@ -237,6 +255,30 @@ PAGES = (
             'room_schedules.view_building',
             'room_schedules.view_room',
             'room_schedules.view_roomgroup',
+        ),
+    ),
+    Page(
+        audience=TECHNICAL, slug='estate-directory', section='Room integration',
+        summary='The mirrored campus, building and room records: what is synced, '
+                'why they cannot be edited here, linking display rooms to them, '
+                'and the room details sent to display devices.',
+        # The _change names are listed even though the admins are read-only:
+        # the URL still exists and renders a view-only form, and that is what
+        # attach_help_links keys the contextual "?" link on.
+        admin_url_names=(
+            'estate_campus_changelist',
+            'estate_campus_change',
+            'estate_building_changelist',
+            'estate_building_change',
+            'estate_room_changelist',
+            'estate_room_change',
+            'estate_buildinglink_changelist',
+            'estate_roomlink_changelist',
+            'estate_room_links',
+        ),
+        permissions=(
+            'estate.view_building',
+            'estate.view_room',
         ),
     ),
     Page(

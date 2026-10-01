@@ -19,8 +19,8 @@ reading first — this set assumes them.
 ## Where to start
 
 - **[How access works](help:access-model)** — read this before granting anyone
-  anything. The two authorisation layers are independent and it's easy to change
-  the wrong one.
+  anything. The three authorisation layers are independent and it's easy to
+  change the wrong one.
 - **[Users and teams](help:users-and-teams)** — the actual procedures for
   onboarding and offboarding.
 - **[Commissioning a display](help:device-commissioning)** — getting a new

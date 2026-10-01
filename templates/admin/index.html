@@ -9,6 +9,26 @@
 {% endblock %}
 
 {% block content %}
+    {# ---- Location notices -------------------------------------------- #}
+    {% comment %}
+        Classes copied from Unfold's own helpers/messages/warning.html, so they
+        are in its compiled bundle.
+
+        no_locations: the user can still work with content, playlists and
+        schedules, which are not tied to a place — so a notice, not a refusal.
+    {% endcomment %}
+    {% if no_locations %}
+        <div class="mb-8 px-3 py-2.5 leading-[18px] rounded-default bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400">
+            {% blocktranslate %}You do not have access to any locations, so no screens are shown. Content, playlists and schedules are unaffected. Ask an administrator to add you to a location group.{% endblocktranslate %}
+        </div>
+    {% endif %}
+    {% if location_groups_need_review %}
+        <div class="mb-8 px-3 py-2.5 leading-[18px] rounded-default bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400">
+            {% blocktranslate count n=location_groups_need_review %}{{ n }} location group grants a place the estate datastore no longer returns, so its members may have lost sight of some screens.{% plural %}{{ n }} location groups grant places the estate datastore no longer returns, so their members may have lost sight of some screens.{% endblocktranslate %}
+            <a href="{{ location_groups_review_url }}" class="font-semibold underline">{% translate "Review them" %}</a>
+        </div>
+    {% endif %}
+
     {# ---- Quick actions ------------------------------------------------ #}
     {% if can_add_source or can_add_playlist %}
         <div class="flex flex-wrap gap-3 mb-8">
@@ -74,7 +94,7 @@
                             </div>
                         </div>
                     {% else %}
-                        <p class="text-base-500 text-sm py-8 text-center">{% translate "No screens for this team yet." %}</p>
+                        <p class="text-base-500 text-sm py-8 text-center">{% if no_locations %}{% translate "No locations assigned." %}{% else %}{% translate "No screens for this team yet." %}{% endif %}</p>
                     {% endif %}
                 </div>
 
@@ -101,6 +121,65 @@
                     {% endif %}
                 </div>
             </div>
+
+            {# ---- Screens by building ---------------------------------- #}
+            {% comment %}
+                Hidden entirely until screens are assigned to rooms, so a site
+                that does not use the estate directory sees an unchanged
+                dashboard rather than an empty box.
+
+                Not a doughnut: N buildings would need N categorical colours,
+                which collides with the per-user accent palette. And not a
+                fifth stat card either — the card row above is a four-column
+                grid. Each count carries a word as well as a colour, so no
+                state rests on hue alone; the hexes are the same three used by
+                the status doughnut and the status-history dots.
+
+                Counts are team-scoped, like everything else on this page,
+                which is what the footnote is for.
+            {% endcomment %}
+            {% if screens_by_building %}
+                <div class="bg-white flex flex-col p-6 rounded-default shadow-xs border border-base-200 dark:bg-base-900 dark:border-base-800">
+                    <h2 class="font-semibold text-[15px] text-important mb-4">{% translate "Screens by building" %}</h2>
+                    <ul class="flex flex-col divide-y divide-base-200 dark:divide-base-800">
+                        {% for b in screens_by_building %}
+                            <li class="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0">
+                                <a href="{{ b.url }}" class="text-important font-medium hover:underline">{{ b.name }}</a>
+                                <span class="text-base-500 text-xs uppercase tracking-wide">{{ b.campus }}</span>
+                                <span class="ml-auto flex flex-wrap gap-2 text-sm">
+                                    {% if b.online %}
+                                        <span class="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                            <span class="inline-block w-2 h-2 rounded-full shrink-0" style="background:#22c55e"></span>
+                                            {% blocktranslate with n=b.online %}{{ n }} online{% endblocktranslate %}
+                                        </span>
+                                    {% endif %}
+                                    {% if b.attention %}
+                                        <span class="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                            <span class="inline-block w-2 h-2 rounded-full shrink-0" style="background:#f59e0b"></span>
+                                            {% blocktranslate with n=b.attention %}{{ n }} needing attention{% endblocktranslate %}
+                                        </span>
+                                    {% endif %}
+                                    {% if b.offline %}
+                                        <span class="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                            <span class="inline-block w-2 h-2 rounded-full shrink-0" style="background:#ef4444"></span>
+                                            {% blocktranslate with n=b.offline %}{{ n }} offline{% endblocktranslate %}
+                                        </span>
+                                    {% endif %}
+                                </span>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                    <p class="text-base-500 text-sm mt-4">
+                        {% if location_restricted %}{% blocktranslate %}Counts cover screens in your teams and locations.{% endblocktranslate %}{% else %}{% blocktranslate %}Counts cover screens in your teams.{% endblocktranslate %}{% endif %}
+                        {% if screens_by_building_more %}
+                            {% blocktranslate with n=screens_by_building_more %}{{ n }} more buildings not shown.{% endblocktranslate %}
+                        {% endif %}
+                        {% if screens_without_room %}{# no whitespace before the full stop #}
+                            <a href="{{ screens_without_room_url }}" class="text-primary-600 hover:underline">{% blocktranslate with n=screens_without_room %}{{ n }} not assigned to a room{% endblocktranslate %}</a>.
+                        {% endif %}
+                    </p>
+                </div>
+            {% endif %}
 
             {# ---- Getting started -------------------------------------- #}
             <div class="bg-white flex flex-col p-6 rounded-default shadow-xs border border-base-200 dark:bg-base-900 dark:border-base-800">

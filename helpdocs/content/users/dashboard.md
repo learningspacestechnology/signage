@@ -1,8 +1,13 @@
 # Reading the dashboard
 
 The dashboard is the page you land on after signing in. Everything on it is
-counted **for the team you are currently working in** — see
-[Teams](help:teams) if the numbers look lower than you expect.
+counted **for the team you are currently working in**, and screens also only for
+your locations — see [Teams](help:teams) if the numbers look lower than you
+expect.
+
+If the dashboard says **you do not have access to any locations**, your account
+has not yet been given any places to see screens in. Content, playlists and
+schedules work as normal; ask an administrator to add you to a location group.
 
 ![The overview dashboard](screenshot:dashboard)
 
@@ -45,6 +50,28 @@ The middle slice is the useful one: it separates the faults you can fix by
 restarting a display from the ones needing someone to go and look at the
 hardware. [Managing screens](help:screens) explains each state and what causes
 it.
+
+## Screens by building
+
+Once screens have been assigned to rooms, a **Screens by building** panel appears
+listing the buildings your screens are in, with the online, needing-attention and
+offline counts for each. **Buildings with something wrong come first**, so the
+one worth opening is at the top.
+
+Each building name opens a page listing every screen in it — and, usefully, every
+room in it with no screen. See
+[Where a screen is](help:screen-locations).
+
+Two things to keep in mind reading it:
+
+- **The counts cover your teams only**, like everything else on this page, and
+  your locations if your account is limited to some. A building may hold more
+  screens than the numbers say.
+- Screens with no room set are counted separately, on the line beneath, which
+  links to them.
+
+The panel is absent entirely until at least one screen has a room, so an
+unconfigured site sees an unchanged dashboard.
 
 ## Content by type
 

@@ -6,12 +6,13 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.admin import GroupAdmin as BaseGroupAdmin
 from django.contrib.auth.decorators import user_passes_test
 from django.contrib.auth.models import User, Group, Permission
-from django.db.models import Count
+from django.db.models import (BooleanField, Count, Exists, ExpressionWrapper,
+                              OuterRef, Q)
 from django.http import HttpResponseBadRequest, HttpResponseRedirect
 from django.templatetags.static import static
 from django.urls import path, reverse
 from django.views.decorators.http import require_POST
-from unfold.admin import ModelAdmin
+from unfold.admin import ModelAdmin, TabularInline
 from unfold.decorators import display
 from unfold.forms import AdminPasswordChangeForm, UserChangeForm
 from unfold.widgets import UnfoldAdminSelectWidget, UnfoldAdminTextInputWidget
@@ -23,6 +24,8 @@ from advertising.middleware import (
     ALL_TEAMS_SESSION_VALUE,
     SESSION_KEY as ACTIVE_TEAM_SESSION_KEY,
 )
+from estate.models import LocationGroupMembership
+from estate.urls import get_estate_admin_urls
 from helpdocs.admin_links import attach_help_links
 from helpdocs.urls import get_help_admin_urls
 from room_schedules.admin import get_o365_admin_urls
@@ -172,6 +175,7 @@ def _patched_admin_get_urls():
     return (
         get_help_admin_urls()
         + get_o365_admin_urls()
+        + get_estate_admin_urls()
         + custom
         + _original_admin_get_urls()
     )
@@ -249,6 +253,11 @@ from django_celery_beat.admin import PeriodicTaskForm, TaskSelectWidget
 from django_celery_results.admin import TaskResultAdmin
 from django_celery_results.models import TaskResult
 
+#: How many buildings the dashboard's estate rollup lists. Sorted worst-first,
+#: so the tail is the buildings with nothing wrong in them.
+BUILDINGS_SHOWN = 6
+
+
 def _doughnut_data(labels, data, colors):
     """JSON payload for Unfold's bundled chart.js (`data-value` on a `.chart`
     canvas). Template autoescaping turns the quotes into entities the browser
@@ -290,12 +299,17 @@ def dashboard_callback(request, context):
 
     Every count respects the active team via ``scope_to_active_team`` — the same
     helper the changelists use — so users only ever see their own team's totals
-    (superusers in ALL_TEAMS mode see global totals)."""
+    (superusers in ALL_TEAMS mode see global totals). Screen counts are also
+    limited to the user's location groups, as the screen list is."""
+    from estate.location_scope import (
+        has_any_location, scope_screens, sees_all_locations)
+    from estate.models import LocationGroup
+    from estate.models.access import stale_grants_q
     from screens.models import (
         Playlist, Schedule, Screen, ScreenStatus, Source, StatusReason)
     from screens.team_scope import scope_to_active_team
 
-    screens_qs = scope_to_active_team(Screen.objects.all(), request)
+    screens_qs = scope_screens(Screen.objects.all(), request)
     playlists_qs = scope_to_active_team(Playlist.objects.all(), request)
     schedules_qs = scope_to_active_team(Schedule.objects.all(), request)
     sources_qs = scope_to_active_team(Source.objects.all(), request)
@@ -350,6 +364,31 @@ def dashboard_callback(request, context):
         for s in screens_qs.needing_attention()[:5]
     ]
 
+    # Estate rollup, off the same team-scoped queryset and the same
+    # with_status() annotation as the doughnut above — so the two can never
+    # disagree about how many screens are dark in a building.
+    buildings = {}
+    for row in (screens_qs.with_status()
+                .filter(room__isnull=False)
+                .values("room__building_id", "room__building__name",
+                        "room__building__campus__name", "derived_status")
+                .annotate(n=Count("id", distinct=True))):  # distinct: see above
+        entry = buildings.setdefault(row["room__building_id"], {
+            "name": row["room__building__name"],
+            "campus": row["room__building__campus__name"],
+            "online": 0, "attention": 0, "offline": 0, "total": 0,
+            "url": reverse("admin:estate_building_screens",
+                           args=[row["room__building_id"]]),
+        })
+        entry[row["derived_status"]] = row["n"]
+        entry["total"] += row["n"]
+
+    # Worst first: a building with three amber screens is the one to open.
+    screens_by_building = sorted(
+        buildings.values(),
+        key=lambda b: (-(b["attention"] + b["offline"]), b["name"]),
+    )[:BUILDINGS_SHOWN]
+
     context.update({
         "title": "Overview Dashboard",  # replaces the default "Site administration"
         "app_list": [],  # dashboard-only layout — no default model list
@@ -380,6 +419,29 @@ def dashboard_callback(request, context):
         ),
 
         "attention_screens": attention_screens,
+
+        # Empty on a site with no room assignments, which is what keeps the
+        # panel — and the whole estate feature — out of an unconfigured
+        # dashboard rather than showing an empty box.
+        "screens_by_building": screens_by_building,
+        "screens_by_building_more": max(0, len(buildings) - BUILDINGS_SHOWN),
+        "screens_without_room": screens_qs.filter(room__isnull=True).count(),
+        # ?room_set=no is RoomAssignedFilter's parameter — a stable name chosen
+        # partly so this link could exist.
+        "screens_without_room_url":
+            reverse("admin:screens_screen_changelist") + "?room_set=no",
+
+        # Content, playlists and schedules are not tied to a place, so a user
+        # with no locations can still work with them — hence a notice rather
+        # than a refusal.
+        "location_restricted": not sees_all_locations(request),
+        "no_locations": not has_any_location(request),
+        # Superusers only: they are the ones who can fix a location group.
+        "location_groups_need_review": (
+            LocationGroup.objects.filter(stale_grants_q()).count()
+            if request.user.is_superuser else 0),
+        "location_groups_review_url":
+            reverse("admin:estate_locationgroup_changelist") + "?needs_review=1",
 
         "can_add_source": request.user.has_perm("screens.add_source"),
         "can_add_playlist": request.user.has_perm("screens.add_playlist"),
@@ -444,6 +506,56 @@ class PermissionAdmin(ModelAdmin):
         return False
 
 
+def _all_locations_q():
+    """Users exempt from location scoping: superusers and permission holders.
+
+    As a query rather than ``has_perm`` per row, so the Users list can show and
+    filter on it in one query. Covers a direct grant and one through a group,
+    which is how migration 0005 hands it out.
+    """
+    perm = {"codename": "access_all_locations", "content_type__app_label": "estate"}
+    return (Q(is_superuser=True)
+            | Q(Exists(Permission.objects.filter(user=OuterRef("pk"), **perm)))
+            | Q(Exists(Permission.objects.filter(group__user=OuterRef("pk"), **perm))))
+
+
+class LocationAccessFilter(admin.SimpleListFilter):
+    """Users by where they can see screens.
+
+    "No location access" is the case most worth finding, as with teams: such a
+    user sees no screens at all until given a location group.
+    """
+
+    title = "location access"
+    parameter_name = "location_access"
+
+    def lookups(self, request, model_admin):
+        return (("all", "All locations"),
+                ("some", "Location groups only"),
+                ("none", "No location access"))
+
+    def queryset(self, request, queryset):
+        in_a_group = Exists(LocationGroupMembership.objects.filter(user=OuterRef("pk")))
+        if self.value() == "all":
+            return queryset.filter(_all_locations_q())
+        if self.value() == "some":
+            return queryset.exclude(_all_locations_q()).filter(in_a_group)
+        if self.value() == "none":
+            return queryset.exclude(_all_locations_q()).exclude(in_a_group)
+        return queryset
+
+
+class UserLocationGroupInline(TabularInline):
+    """This user's location groups, on their change page. Superusers only."""
+
+    model = LocationGroupMembership
+    fk_name = "user"
+    extra = 0
+    autocomplete_fields = ("group",)
+    verbose_name = "location group"
+    verbose_name_plural = "location groups"
+
+
 class TeamListFilter(admin.RelatedFieldListFilter):
     """Team filter for the Users list, with the "no team" option spelled out.
 
@@ -470,11 +582,13 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
         "first_name",
         "last_name",
         "show_teams",
+        "show_locations",
         "is_staff",
     )
     # `teams` is the reverse side of Team.members, so the filter also offers the
     # "no team" case (see TeamListFilter).
-    list_filter = BaseUserAdmin.list_filter + (("teams", TeamListFilter),)
+    list_filter = BaseUserAdmin.list_filter + (
+        ("teams", TeamListFilter), LocationAccessFilter)
     add_fieldsets = (
         (
             None,
@@ -491,6 +605,7 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
                     "last_name",
                     "is_staff",
                     "teams",
+                    "location_groups",
                     "password1",
                     "password2",
                 ),
@@ -499,9 +614,21 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
     )
 
     def get_queryset(self, request):
-        # show_teams walks every row's teams; without this the changelist runs a
-        # query per user.
-        return super().get_queryset(request).prefetch_related("teams")
+        # show_teams and show_locations walk every row's teams and location
+        # groups; without the prefetch and the annotation the changelist runs
+        # queries per user.
+        return (super().get_queryset(request)
+                .prefetch_related("teams", "location_groups")
+                .annotate(sees_all_locations=ExpressionWrapper(
+                    _all_locations_q(), output_field=BooleanField())))
+
+    def get_inlines(self, request, obj):
+        inlines = list(super().get_inlines(request, obj))
+        # Superusers only, as LocationGroupAdmin is: a location group grants
+        # access, so anyone else editing membership could widen their own.
+        if obj is not None and request.user.is_superuser:
+            inlines.append(UserLocationGroupInline)
+        return inlines
 
     @display(description="Teams")
     def show_teams(self, obj):
@@ -509,15 +636,23 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
         # is actually used.
         return ", ".join(team.name for team in obj.teams.all()) or "—"
 
+    @display(description="Locations")
+    def show_locations(self, obj):
+        if obj.sees_all_locations:
+            return "All locations"
+        return ", ".join(g.name for g in obj.location_groups.all()) or "No access"
+
     def get_fieldsets(self, request, obj=None):
         fieldsets = super().get_fieldsets(request, obj)
-        # Only superusers manage team membership (see CLAUDE.md); hide the field
-        # from everyone else on the add form.
+        # Only superusers manage team or location group membership (see
+        # CLAUDE.md); hide both fields from everyone else on the add form.
+        superuser_only = {"teams", "location_groups"}
         if obj is None and not request.user.is_superuser:
             fieldsets = [
                 (
                     name,
-                    {**opts, "fields": tuple(f for f in opts["fields"] if f != "teams")},
+                    {**opts, "fields": tuple(
+                        f for f in opts["fields"] if f not in superuser_only)},
                 )
                 for name, opts in fieldsets
             ]
@@ -525,15 +660,23 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
 
     def save_related(self, request, form, formsets, change):
         super().save_related(request, form, formsets, change)
-        # `teams` only exists on the add form; a no-op on the change page.
-        # Gate on is_superuser so a crafted POST can't grant team access even
-        # though get_fieldsets already hides the field from non-superusers.
+        # `teams` and `location_groups` only exist on the add form; a no-op on
+        # the change page. Gate on is_superuser so a crafted POST can't grant
+        # access even though get_fieldsets already hides the fields from
+        # non-superusers.
+        if not request.user.is_superuser:
+            return
         teams = form.cleaned_data.get("teams")
-        if teams and request.user.is_superuser:
+        if teams:
             from screens.models import TeamMembership
 
             for team in teams:
                 TeamMembership.objects.get_or_create(user=form.instance, team=team)
+        location_groups = form.cleaned_data.get("location_groups")
+        if location_groups:
+            for group in location_groups:
+                LocationGroupMembership.objects.get_or_create(
+                    user=form.instance, group=group)
 
 
 @admin.register(Group)

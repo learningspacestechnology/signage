@@ -6,6 +6,19 @@ involved — you configure the room, and the display follows. Nothing on this pa
 overlaps with content, playlists or screens; that is a separate pipeline
 entirely.
 
+!!! note "These Buildings and Rooms are not the estate directory"
+    The **Buildings** and **Rooms** described here are *display configuration*:
+    each one exists because someone set up a booking display, and each carries
+    layout and screensaver settings.
+
+    **Estate buildings** and **Estate rooms**, under *Estate directory*, are a
+    read-only copy of the University's own record — every room in the estate,
+    whether or not it has any equipment. Screens are assigned to those.
+
+    The two can be tied together on the **Link display rooms** page, which is
+    worth doing for reporting, but nothing here requires it. See
+    [The estate directory](help:estate-directory).
+
 There are three kinds:
 
 | Kind | Typical use |

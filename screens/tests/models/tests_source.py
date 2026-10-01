@@ -12,7 +12,12 @@ update_time = datetime.datetime.fromisoformat("2022-03-28T20:59:34.000+00:00")
 class SourceTests(TestCase):
     def setUp(self):
         self.base_time = datetime.datetime.fromisoformat("2022-03-27T20:59:34.000+00:00")
-        time_machine.travel(self.base_time, tick=False).start()
+        traveller = time_machine.travel(self.base_time, tick=False)
+        traveller.start()
+        # Without this the frozen clock leaks into every later test class in the
+        # process, where it silently collapses "before" and "after" timestamps.
+        # Same fix, and the same reason, as tests_playlist.py.
+        self.addCleanup(traveller.stop)
         self.playlist = Playlist.objects.create(name="listA")
         self.source = Source.objects.create(file=SimpleUploadedFile("test_file_original.png", b"an_image"))
         self.pl_entry = PlaylistEntry.objects.create(playlist=self.playlist, number=1, source=self.source)

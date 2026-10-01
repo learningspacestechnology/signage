@@ -72,6 +72,28 @@ Consequences worth remembering:
   that screen as seen. Don't be surprised when a screen you were investigating
   goes green.
 
+### The `room` object
+
+The response also carries a `room` object naming where the screen is — the room,
+its building and campus, its status, capacity, `active` (whether the room is
+open today), coordinates, and a `support` block (service provider, VoIP
+number) — or `null` for a screen with no room set. `active` is always `true` or
+`false`; every other value inside it is independently nullable, and in practice
+many are: the source data is sparse. A screen with no schedule still reports
+its room.
+
+**No display uses any of this yet.** It is sent so a future player build can show
+where it is standing, or offer wayfinding, without needing a server change first.
+Do not go hunting for an on-screen feature; there is none.
+
+It cannot disturb anything either: it is a new key alongside the existing ones,
+it does not appear in `/api/screen`, and it has no effect on
+`playlist_last_updated`. Assigning a room does move that timestamp, but only
+because saving the screen record does — the same as a rename.
+
+See [The estate directory](help:estate-directory) for where the room data comes
+from.
+
 ## Reachability, the other signal
 
 The heartbeat answers one question — *is the player polling?* — and on its own it

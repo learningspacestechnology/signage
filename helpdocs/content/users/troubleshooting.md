@@ -118,11 +118,51 @@ Almost always [teams](help:teams). You're looking at one team's items; theirs is
 in another. Ask which team it belongs to, switch to it using the team name at the
 top of the page, or ask an administrator to add you to it.
 
+## My screen list is empty, or a screen has gone missing
+
+If the dashboard says you do not have access to any locations, your account has
+not been given any places yet. Ask an administrator to add you to a location
+group.
+
+Otherwise the screen is probably in a room outside your locations, or belongs to
+another team. See *Your locations* in [Teams](help:teams).
+
 ## A playlist won't let me pick another playlist to inherit from
 
 Either it would create a loop — following the chain would lead back to the
 playlist you're editing — or the other playlist belongs to a team you're not in.
 See [Sharing content between playlists](help:playlist-inheritance).
+
+## A building is missing from the campus or building filter
+
+It isn't a fault. Those filters only offer buildings that hold a screen **you**
+can see, so a building with none of your screens in it is left out — as is a
+building holding only another team's displays.
+
+For the same reason, neither filter appears at all until your screens are spread
+across more than one building.
+
+If a screen genuinely is in that building, set its **Room**; the building appears
+as soon as you save. See [Where a screen is](help:screen-locations).
+
+## A room is missing from the Room picker
+
+The room list is a copy of the University's own record, refreshed overnight. It
+covers the whole estate, so most rooms are in it — but it cannot be added to
+here.
+
+The **Room** box only lists rooms in the building chosen in the **Building** box
+above it, so check that first. Buildings are grouped under the internal campus
+names, so look under "Central North" rather than "Central".
+
+Otherwise, a missing room usually means it is newer than the last overnight
+refresh, or that it simply isn't catalogued. Ask an administrator to run a
+refresh; if it still isn't there, leave **Building** and **Room** blank. That is
+a supported state, not a gap to be filled.
+
+If the **Room** box says *The results could not be loaded* for every building,
+that is a different problem: you have not been given permission to read the room
+list. Ask an administrator.
 
 ## A room display is showing the wrong bookings, or none
 

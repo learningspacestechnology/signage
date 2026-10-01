@@ -1,0 +1,116 @@
+{% extends "admin/base_site.html" %}
+{% comment %}
+    Every screen in one building, plus the rooms in it that have no screen.
+
+    Both lists are scoped to the reader's active team, which is why the second
+    panel is headed "no screen you can see" rather than "no screen" — a room
+    may well hold another team's display.
+
+    Status colours match the dashboard and the changelist badge exactly, and
+    the status word is always spelled out beside the dot, so state is never
+    conveyed by colour alone. Classes are Unfold's own vocabulary, copied from
+    room_schedules' o365_assigned.html — Unfold's compiled bundle holds only
+    the classes its templates use, so an invented utility may not exist.
+{% endcomment %}
+{% load i18n %}
+
+{% block content %}
+    <div id="content-main" class="flex flex-col gap-6">
+        {% include "admin/helpdocs/_help_hint_slot.html" %}
+
+        <section class="flex flex-col gap-3">
+            <header class="flex flex-wrap items-baseline gap-3">
+                <h1 class="font-semibold text-xl text-font-important-light dark:text-font-important-dark">{{ building.name }}</h1>
+                {% if building.code %}
+                    <span class="font-mono text-xs text-font-subtle-light dark:text-font-subtle-dark">{{ building.code }}</span>
+                {% endif %}
+                <span class="text-xs uppercase tracking-wide text-font-subtle-light dark:text-font-subtle-dark">{{ building.campus.name }}</span>
+
+                <div class="flex gap-2 ml-auto">
+                    <a class="inline-block font-semibold h-6 leading-6 px-2 rounded-default text-[11px] uppercase whitespace-nowrap bg-base-100 text-font-default-light dark:bg-base-800 dark:text-font-default-dark"
+                       href="{{ building_url }}">Building record</a>
+                    <a class="inline-block font-semibold h-6 leading-6 px-2 rounded-default text-[11px] uppercase whitespace-nowrap bg-primary-100 text-primary-700 dark:bg-primary-500/20 dark:text-primary-400"
+                       href="{{ changelist_url }}">Open in screen list</a>
+                </div>
+            </header>
+
+            <div class="flex flex-wrap gap-2 text-sm">
+                <span class="inline-flex items-center gap-2 px-2 py-1 rounded-default bg-base-100 dark:bg-base-800">
+                    <span class="inline-block w-2 h-2 rounded-full shrink-0" style="background:#22c55e"></span>
+                    {{ online_count }} online
+                </span>
+                <span class="inline-flex items-center gap-2 px-2 py-1 rounded-default bg-base-100 dark:bg-base-800">
+                    <span class="inline-block w-2 h-2 rounded-full shrink-0" style="background:#f59e0b"></span>
+                    {{ attention_count }} needing attention
+                </span>
+                <span class="inline-flex items-center gap-2 px-2 py-1 rounded-default bg-base-100 dark:bg-base-800">
+                    <span class="inline-block w-2 h-2 rounded-full shrink-0" style="background:#ef4444"></span>
+                    {{ offline_count }} offline
+                </span>
+            </div>
+        </section>
+
+        <section class="flex flex-col gap-3">
+            <h2 class="font-semibold text-lg text-font-important-light dark:text-font-important-dark">
+                Screens {% if screens %}<span class="font-normal text-xs uppercase tracking-wide text-font-subtle-light dark:text-font-subtle-dark">({{ screens|length }} in your teams)</span>{% endif %}
+            </h2>
+
+            {% if screens %}
+                <div class="-mx-1 px-1 overflow-x-auto lg:rounded-default lg:border lg:border-base-200 lg:mx-0 lg:px-0 lg:shadow-xs lg:bg-white lg:dark:border-base-800 lg:dark:bg-base-900">
+                    <table class="block border-spacing-none border-separate w-full lg:table">
+                        <thead class="hidden lg:table-header-group">
+                            <tr>
+                                <th class="font-medium px-3 py-3 text-left text-font-important-light text-xs uppercase dark:text-font-important-dark">Room</th>
+                                <th class="font-medium px-3 py-3 text-left text-font-important-light text-xs uppercase dark:text-font-important-dark">Screen</th>
+                                <th class="font-medium px-3 py-3 text-left text-font-important-light text-xs uppercase dark:text-font-important-dark">Status</th>
+                                <th class="font-medium px-3 py-3 text-left text-font-important-light text-xs uppercase dark:text-font-important-dark">Detail</th>
+                                <th class="font-medium px-3 py-3 text-left text-font-important-light text-xs uppercase dark:text-font-important-dark">Last seen</th>
+                            </tr>
+                        </thead>
+                        <tbody class="block lg:table-row-group">
+                            {% for screen in screens %}
+                                <tr class="block border border-base-200 mb-3 rounded-default lg:table-row lg:border-none lg:mb-0 lg:rounded-none dark:border-base-800">
+                                    <td class="border-b border-base-200 px-3 py-2 font-medium text-font-important-light dark:text-font-important-dark lg:border-b-0 lg:border-t dark:border-base-800">{% include "admin/estate/_screen_room_cell.html" with room=screen.room %}</td>
+                                    <td class="border-b border-base-200 px-3 py-2 lg:border-b-0 lg:border-t dark:border-base-800">
+                                        <a class="text-primary-600 dark:text-primary-400 underline"
+                                           href="{% url 'admin:screens_screen_change' screen.pk %}">{{ screen.name }}</a>
+                                        <span class="font-mono text-xs text-font-subtle-light dark:text-font-subtle-dark">{{ screen.ip }}</span>
+                                    </td>
+                                    <td class="border-b border-base-200 px-3 py-2 lg:border-b-0 lg:border-t dark:border-base-800">
+                                        <span class="inline-flex items-center gap-2 whitespace-nowrap">
+                                            <span class="inline-block w-2 h-2 rounded-full shrink-0"
+                                                  style="background:{% if screen.derived_status == 'online' %}#22c55e{% elif screen.derived_status == 'attention' %}#f59e0b{% else %}#ef4444{% endif %}"></span>
+                                            <span class="text-important font-medium">{{ screen.status_label }}</span>
+                                        </span>
+                                    </td>
+                                    <td class="border-b border-base-200 px-3 py-2 text-base-500 lg:border-b-0 lg:border-t dark:border-base-800">{{ screen.status_reason_label|default:"—" }}</td>
+                                    <td class="px-3 py-2 text-base-500 whitespace-nowrap lg:border-t lg:border-base-200 lg:dark:border-base-800">{{ screen.last_seen|timesince }} ago</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <p class="text-sm text-font-subtle-light dark:text-font-subtle-dark">
+                    None of your teams has a screen in a room in this building.
+                </p>
+            {% endif %}
+        </section>
+
+        {% if dark_rooms %}
+            <section class="flex flex-col gap-3">
+                <h2 class="font-semibold text-lg text-font-important-light dark:text-font-important-dark">Rooms with no screen you can see</h2>
+                <p class="text-sm text-font-subtle-light dark:text-font-subtle-dark">
+                    Scoped to your active team — a room here may hold another team's display.
+                </p>
+                <ul class="flex flex-wrap gap-2">
+                    {% for room in dark_rooms %}
+                        <li class="inline-block px-2 py-1 rounded-default text-sm bg-base-100 text-font-default-light dark:bg-base-800 dark:text-font-default-dark">
+                            {{ room.name }}{% if room.capacity %} <span class="text-xs text-font-subtle-light dark:text-font-subtle-dark">({{ room.capacity }})</span>{% endif %}{% if not room.active %}{% include "admin/estate/_inactive_room_label.html" %}{% endif %}
+                        </li>
+                    {% endfor %}
+                </ul>
+            </section>
+        {% endif %}
+    </div>
+{% endblock %}

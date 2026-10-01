@@ -14,6 +14,7 @@ job" apart from "actually broken".
 | Pull room bookings | {{ config.ROOM_EVENT_SCHEDULE }} | Fetches today's bookings for every room with a calendar address |
 | Clean up old events | {{ config.ROOM_CLEANUP_SCHEDULE }} | Deletes bookings more than two days old |
 | Sync O365 rooms | {{ config.ROOM_SYNC_SCHEDULE }} | Rebuilds the tenant room inventory and flags problems |
+| Sync estate | {{ config.ESTATE_SYNC_SCHEDULE }} | Mirrors the University's campus, building and room record so screens can be assigned to rooms |
 | Check screens | {{ config.SCREEN_CHECK_SCHEDULE }} | Pings screens that have stopped reporting, and records status changes |
 | Clean up status history | daily at 03:30 | Deletes screen status changes older than {{ config.SCREEN_HISTORY_DAYS }} days |
 
@@ -57,6 +58,8 @@ Be careful what you disable:
   state. The screens keep working and keep showing stale bookings, which is worse
   than showing nothing.
 - Disabling **Clean up content** means expired content keeps playing.
+- Disabling **Sync estate** simply freezes the room directory. Screens keep their
+  rooms and nothing breaks; newly built rooms just never appear in the picker.
 - Disabling **Update playlists** means content with a future start date never
   appears.
 - Disabling **Check screens** does not break status — online/offline still work,
@@ -69,6 +72,9 @@ Be careful what you disable:
 
 **Sync O365 rooms** has a button in the interface — **Sync O365 rooms now** on
 either O365 rooms tab. See [O365 rooms](help:o365-rooms).
+
+**Sync estate** likewise — **Sync estate now** on the estate rooms list. See
+[The estate directory](help:estate-directory).
 
 The others have no button. To force one, set it as a **one-off clocked task** for
 a moment shortly in the future, let it fire, then restore the original schedule.
@@ -99,6 +105,7 @@ job set for `02:15` runs at quarter past two by a local clock all year round.
 | Content with a start date never appears | Update playlists |
 | Room displays are showing yesterday's bookings | Pull room bookings |
 | New rooms in the tenant never appear | Sync O365 rooms |
+| A room is missing from a screen's Room picker | Sync estate |
 | Old schedule rules are piling up | Clean up schedule rules |
 | No screen ever shows "needs attention" | Check screens |
 | A screen's status history stops at some date | Check screens |

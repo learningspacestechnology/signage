@@ -1,4 +1,5 @@
-from screens.models import Playlist
+from estate.picker import BuildingChoiceField, room_picker_label
+from screens.models import Playlist, Screen
 from django import forms
 from django.core.exceptions import ValidationError
 from django.forms import ModelForm, FileField
@@ -121,3 +122,45 @@ class SourceBulkCreateForm(PlaylistAssigningSourceForm):
             # saving of m2m data.
             self.save_m2m = self._save_m2m
         return self.instance
+
+
+class ScreenAdminForm(ModelForm):
+    """The screen form, with a Building box that narrows the Room picker.
+
+    ``building`` is not stored: a screen's building is its room's. It is here
+    only to choose from — see ``estate.picker`` for why the picker is split.
+    """
+
+    building = BuildingChoiceField(
+        required=False,
+        help_text="Choose the building first; the Room box then lists only its rooms.")
+
+    class Meta:
+        model = Screen
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if 'building' not in self.fields or 'room' not in self.fields:
+            return
+        if self.instance.room_id and 'building' not in self.initial:
+            self.initial['building'] = self.instance.room.building_id
+        room = self.fields['room']
+        # Inside the admin's RelatedFieldWidgetWrapper, whose own `attrs` is the
+        # *class-level* widget's dict: writing there would leak into every
+        # later form and still not reach the widget that renders.
+        getattr(room.widget, 'widget', room.widget).attrs['data-building-input'] = (
+            self['building'].auto_id)
+        # The option the page loads with; the rest come from the picker view,
+        # which labels them the same way.
+        room.label_from_instance = room_picker_label
+
+    def clean(self):
+        cleaned = super().clean()
+        building, room = cleaned.get('building'), cleaned.get('room')
+        # Only reachable by a crafted POST or a script failure — the page clears
+        # the room whenever the building changes — but a mismatch saved here
+        # would put the screen somewhere the operator did not choose.
+        if building and room and room.building_id != building.pk:
+            self.add_error('room', f"{room.name} is not in {building.name}.")
+        return cleaned

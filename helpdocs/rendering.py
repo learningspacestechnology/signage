@@ -52,6 +52,7 @@ CONFIG_KEYS = (
     'AUTO_MAKE_SCREENS_FOR_NEW_IPS',
     'TIME_ZONE',
     'SCREEN_PROBE_ENABLED',
+    'LSD_API_BASE_URL',
 )
 
 #: Derived values that aren't settings in their own right but would otherwise be
@@ -61,6 +62,7 @@ DERIVED_CONFIG_KEYS = (
     'ROOM_EVENT_SCHEDULE',
     'ROOM_CLEANUP_SCHEDULE',
     'ROOM_SYNC_SCHEDULE',
+    'ESTATE_SYNC_SCHEDULE',
     'SCREEN_OFFLINE_AFTER',
     'SCREEN_ATTENTION_AFTER',
     'SCREEN_PING_WINDOW',
@@ -153,6 +155,8 @@ def _derived_config():
             'room_schedules.tasks.cleanup_schedule', 'daily at midnight'),
         'ROOM_SYNC_SCHEDULE': _schedule_for_task(
             'room_schedules.tasks.sync_o365_rooms', 'daily at 02:15'),
+        'ESTATE_SYNC_SCHEDULE': _schedule_for_task(
+            'estate.tasks.sync_estate', 'daily at 02:45'),
         # Screen.online() compares last_seen against now - 1 minute.
         'SCREEN_OFFLINE_AFTER': 'one minute',
         # The two other status windows, read off the constants themselves so

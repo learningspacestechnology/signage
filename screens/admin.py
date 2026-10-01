@@ -13,7 +13,15 @@ from unfold.admin import ModelAdmin, TabularInline, StackedInline
 from unfold.decorators import display
 
 from advertising.middleware import ALL_TEAMS
-from screens.forms import SourceBulkCreateForm, PlaylistAssigningSourceForm
+from estate.location_scope import (scope_screens, scope_to_locations,
+                                   sees_all_locations)
+from estate.models import Building, Room
+from estate.picker import RoomPickerWidget
+from screens.forms import (
+    PlaylistAssigningSourceForm,
+    ScreenAdminForm,
+    SourceBulkCreateForm,
+)
 from screens.models import (
     Playlist,
     PlaylistEntry,
@@ -412,6 +420,210 @@ class ScreenStatusFilter(admin.SimpleListFilter):
         return queryset
 
 
+class EstateRelatedFilter(admin.RelatedOnlyFieldListFilter):
+    """A campus/building filter offering only values the reader's screens use.
+
+    Subclassed rather than used bare for two reasons.
+
+    The queryset: `RelatedOnlyFieldListFilter` builds its options from
+    `model_admin.get_queryset(request)`, which here carries `with_status()`'s
+    three correlated subqueries — pure cost when all that is wanted is a column
+    of building ids. Scoping to the active team and the reader's locations
+    directly gives the same option set for less.
+
+    The title: unqualified, "building" reads exactly like the room_schedules
+    filter next to it, which is a different kind of building entirely.
+
+    Using the *stock* related filter here would be the real bug — its
+    `field_choices` applies no queryset restriction at all, so it would list
+    every building in the university, almost all matching zero screens. That is
+    the trap already documented for `schedule` below, an order of magnitude
+    worse.
+    """
+
+    filter_title = None
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.filter_title:
+            self.title = self.filter_title
+
+    def has_output(self):
+        """Also render whenever a value is actually selected.
+
+        The stock filter hides itself with one option or none, which is right
+        on a site with a single building — the feature stays invisible until it
+        has something to choose between. But `ChangeList.get_filters` pops a
+        filter's lookup parameter whether or not the filter survives
+        `has_output()`, so a hidden filter does not merely fail to render, it
+        silently *ignores* `?room__building__id__exact=N` and shows every
+        screen. The per-building page and the dashboard both link with exactly
+        that parameter, so a selected value has to keep the filter alive.
+        """
+        return super().has_output() or self.lookup_val is not None
+
+    def screens(self, request):
+        """The screens whose values this filter offers."""
+        return scope_screens(Screen.objects.all(), request)
+
+    def field_choices(self, field, request, model_admin):
+        used = self.screens(request).values_list(f'{self.field_path}__pk', flat=True)
+        return field.get_choices(
+            include_blank=False,
+            limit_choices_to={'pk__in': used},
+            ordering=self.field_admin_ordering(field, request, model_admin),
+        )
+
+
+#: The two estate filters' lookup parameters. Each reads the other's: the
+#: building filter narrows to the selected campus, and the campus filter drops a
+#: selected building that a newly chosen campus would not contain.
+CAMPUS_LOOKUP = 'room__building__campus__id__exact'
+BUILDING_LOOKUP = 'room__building__id__exact'
+
+
+class EstateCampusFilter(EstateRelatedFilter):
+    filter_title = "campus"
+
+    def choices(self, changelist):
+        """As the stock filter, but switching campus drops a building not on it.
+
+        Otherwise choosing Central, then Appleton Tower, then King's Buildings
+        would keep Appleton Tower selected: the list would empty, and the
+        building filter — now narrowed to King's Buildings — would no longer
+        even show what is holding it empty. A building that *is* on the chosen
+        campus is kept, and "All" keeps any building.
+        """
+        building = changelist.params.get(BUILDING_LOOKUP)
+        choices = super().choices(changelist)
+        if building is None:
+            yield from choices
+            return
+        try:
+            building_campus = (Building.objects.filter(pk=building)
+                               .values_list('campus_id', flat=True).first())
+        except (ValueError, ValidationError):
+            building_campus = None
+        yield next(choices)  # "All"
+        for (pk, _), choice in zip(self.lookup_choices, choices):
+            if pk != building_campus:
+                choice['query_string'] = changelist.get_query_string(
+                    {self.lookup_kwarg: pk},
+                    [self.lookup_kwarg_isnull, BUILDING_LOOKUP])
+            yield choice
+
+
+class EstateBuildingFilter(EstateRelatedFilter):
+    """Buildings holding the reader's screens — on the selected campus, if any.
+
+    Reads the campus from the request rather than from ``params``, because the
+    campus filter has already popped its own parameter by the time this one is
+    built.
+    """
+
+    filter_title = "building"
+
+    def __init__(self, field, request, *args, **kwargs):
+        # Before super(), which builds the options through screens().
+        try:
+            self.campus = int(request.GET[CAMPUS_LOOKUP])
+        except (KeyError, ValueError):
+            # A junk value is reported by the campus filter itself; offering
+            # every building meanwhile is the harmless answer.
+            self.campus = None
+        super().__init__(field, request, *args, **kwargs)
+
+    def screens(self, request):
+        screens = super().screens(request)
+        if self.campus is not None:
+            screens = screens.filter(room__building__campus_id=self.campus)
+        return screens
+
+    def has_output(self):
+        """With a campus selected, show even a single building.
+
+        The stock rule — hide with one option — would make the filter vanish
+        the moment a campus with one screened building was chosen, which reads
+        as the filter breaking rather than as "everything here is in one
+        building".
+        """
+        return super().has_output() or (
+            self.campus is not None and bool(self.lookup_choices))
+
+
+class SupportTypeFilter(admin.SimpleListFilter):
+    """Who looks after the screen's room, by the estate directory's support type.
+
+    Only values on screens the reader can see are offered, for the reason the
+    estate filters above are scoped: the datastore's own list covers every room
+    in the university. A room with no support type is common — over a third of
+    the estate — so it gets its own option rather than vanishing.
+    """
+
+    title = "support type"
+    parameter_name = "support"
+    #: Not a value the datastore could send for a support type, which is a
+    #: department or service name.
+    NOT_RECORDED = "_none"
+
+    def lookups(self, request, model_admin):
+        used = set(
+            scope_screens(Screen.objects.all(), request)
+            .filter(room__isnull=False)
+            .order_by().values_list('room__support_type', flat=True).distinct())
+        choices = [(value, value) for value in sorted(used - {''}, key=str.casefold)]
+        if choices and '' in used:
+            choices.append((self.NOT_RECORDED, "Not recorded"))
+        return choices
+
+    def has_output(self):
+        # Selected means applied, even with nothing on offer — the trap
+        # EstateRelatedFilter.has_output describes.
+        return super().has_output() or self.value() is not None
+
+    def queryset(self, request, queryset):
+        value = self.value()
+        if value is None:
+            return queryset
+        if value == self.NOT_RECORDED:
+            return queryset.filter(room__isnull=False, room__support_type='')
+        return queryset.filter(room__support_type=value)
+
+
+class RoomAssignedFilter(admin.SimpleListFilter):
+    """"Which screens still have no location" — the commissioning backlog.
+
+    A SimpleListFilter rather than EmptyFieldListFilter for the wording (the
+    stock one renders "By room: Empty / Not empty", which reads as a data
+    problem rather than a task) and for a stable URL parameter the dashboard
+    can link to.
+
+    "In an inactive room" is the other location task: the datastore says the
+    room is not open today, so the screen is either somewhere closed or
+    assigned to the wrong room. The same condition badges the Room column.
+    """
+
+    title = "room"
+    parameter_name = "room_set"
+
+    def lookups(self, request, model_admin):
+        # A location-restricted reader never sees a screen with no room — no
+        # grant can cover one — so "No room set" would always be empty.
+        if not sees_all_locations(request):
+            return (("yes", "In a room"), ("inactive", "In an inactive room"))
+        return (("yes", "In a room"), ("no", "No room set"),
+                ("inactive", "In an inactive room"))
+
+    def queryset(self, request, queryset):
+        if self.value() == "yes":
+            return queryset.filter(room__isnull=False)
+        if self.value() == "no":
+            return queryset.filter(room__isnull=True)
+        if self.value() == "inactive":
+            return queryset.filter(room__active=False)
+        return queryset
+
+
 #: How many past status changes the screen page shows. A screen that flaps can
 #: accumulate rows all the way to the retention limit, and nobody reads past
 #: the recent ones.
@@ -424,18 +636,35 @@ class ScreenAdmin(TeamScopedAdminMixin, ModelAdmin):
                        'show_status', 'show_status_detail', 'status_history',
                        'last_seen', 'last_ping_ok', 'last_ping_attempt')
     list_display = ('name', 'ip', 'show_status', 'show_status_detail', 'last_seen',
-                    'schedule', 'show_teams')
-    search_fields = ('name', 'ip')
+                    'show_building', 'show_room', 'schedule', 'show_teams')
+    search_fields = ('name', 'ip', 'room__name', 'room__building__name')
     # RelatedOnly, not a bare 'schedule': the stock related filter lists every
     # schedule on the system regardless of team, so a user saw — and could
     # filter by — other teams' schedules, every one of which matched nothing.
     # Limiting to the values present in this admin's own (team-scoped) queryset
     # scopes it correctly and drops the dead options at the same time.
-    list_filter = (('schedule', admin.RelatedOnlyFieldListFilter), ScreenStatusFilter)
-    list_select_related = ('schedule',)
+    list_filter = (
+        ('schedule', admin.RelatedOnlyFieldListFilter),
+        ScreenStatusFilter,
+        # Campus before building: the building filter narrows to the campus.
+        ('room__building__campus', EstateCampusFilter),
+        ('room__building', EstateBuildingFilter),
+        SupportTypeFilter,
+        RoomAssignedFilter,
+    )
+    # 'room__building' rather than 'room': the Building column would otherwise
+    # cost a second query per row. Campus is not selected because there is no
+    # campus column — it is served by the filter alone.
+    list_select_related = ('schedule', 'room__building')
+    # Room is picked in two steps, building then room — see estate.picker. The
+    # room half is an autocomplete, and its view checks `estate.view_room` on
+    # the *related* admin, so an operator without it gets a silently empty
+    # picker.
+    form = ScreenAdminForm
     fieldsets = (
         (None, {
-            'fields': ('name', 'schedule', 'ip', 'teams', 'screen_preview'),
+            'fields': ('name', 'schedule', 'ip', 'building', 'room', 'teams',
+                       'screen_preview'),
         }),
         ('Status', {
             'fields': ('show_status', 'show_status_detail',
@@ -458,9 +687,40 @@ class ScreenAdmin(TeamScopedAdminMixin, ModelAdmin):
     )
 
     def get_queryset(self, request):
-        # with_status() so the badge, the detail column and the sort all read
-        # one annotation rather than each screen recomputing its own.
-        return super().get_queryset(request).with_status()
+        # Location-scoped on top of the mixin's team scoping. with_status() so
+        # the badge, the detail column and the sort all read one annotation
+        # rather than each screen recomputing its own.
+        return scope_to_locations(
+            super().get_queryset(request), request).with_status()
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == 'room':
+            kwargs['widget'] = RoomPickerWidget(
+                db_field, self.admin_site, using=kwargs.get('using'))
+            # Load-bearing, not cosmetic. The picker's options come from
+            # RoomAdmin, which is already scoped, but the field *validates*
+            # against this queryset — and Django's default is every room, so a
+            # crafted POST could place a screen outside the user's locations.
+            kwargs['queryset'] = scope_to_locations(Room.objects.all(), request)
+        field = super().formfield_for_foreignkey(db_field, request, **kwargs)
+        if db_field.name == 'room' and field and not sees_all_locations(request):
+            # A restricted user only sees screens in their rooms, so one saved
+            # with no room would vanish from their list the moment it saved.
+            field.required = True
+            field.help_text = (
+                "Where this screen physically is, from the estate directory. "
+                "Required, because you only see screens in your locations.")
+        return field
+
+    def get_form(self, request, obj=None, **kwargs):
+        form_class = super().get_form(request, obj, **kwargs)
+        if 'building' in form_class.base_fields and not sees_all_locations(request):
+            # Copy first, as SourceDisplay.get_form does: the declared field is
+            # shared by every form class the factory builds.
+            field = copy.deepcopy(form_class.base_fields['building'])
+            field.queryset = scope_to_locations(field.queryset, request)
+            form_class.base_fields['building'] = field
+        return form_class
 
     @display(description="Status history")
     def status_history(self, obj):
@@ -520,6 +780,11 @@ class ScreenAdmin(TeamScopedAdminMixin, ModelAdmin):
     def get_fieldsets(self, request, obj=None):
         fieldsets = super().get_fieldsets(request, obj)
         hidden = self._hidden_fields(request, obj)
+        if obj is not None and not self.has_change_permission(request, obj):
+            # View-only renders every field read-only from the model, and
+            # `building` exists only on the form, so Django cannot look it up.
+            # The read-only Room already reads "Building — Room".
+            hidden.add('building')
         if not hidden:
             return fieldsets
         # Substitute a note for the interspersed fields rather than letting them
@@ -595,6 +860,23 @@ class ScreenAdmin(TeamScopedAdminMixin, ModelAdmin):
         else:
             when = ""
         return " · ".join(part for part in (reason, when) if part) or "—"
+
+    @display(description="Building", ordering="room__building__name")
+    def show_building(self, obj):
+        # room_id rather than room, so an unassigned screen costs no query even
+        # if list_select_related is ever dropped.
+        return obj.room.building.name if obj.room_id else "—"
+
+    @display(description="Room", ordering="room__name")
+    def show_room(self, obj):
+        if not obj.room_id:
+            return "—"
+        if obj.room.active:
+            return obj.room.name
+        # The room itself is escaped by the template engine; the badge is the
+        # same include the per-building screens page uses.
+        return get_template("admin/estate/_screen_room_cell.html").render(
+            {"room": obj.room})
 
     @display(description="Teams")
     def show_teams(self, obj):

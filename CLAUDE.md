@@ -39,10 +39,11 @@ To add packages: `uv add <package>`.
 
 ## Architecture
 
-This is a **Django 4.2** digital signage management system. There are three Django apps:
+This is a **Django 4.2** digital signage management system. There are four Django apps:
 
 - **screens/**: Core app managing the display pipeline — Screens, Playlists, Sources, and Schedules.
 - **room_schedules/**: Git submodule providing room booking and event integration with Microsoft O365 calendars. The tracked URL in `.gitmodules` is `https://github.com/learningspacestechnology/django_room_schedules.git` (branch `master`) — that is what a fresh clone gets. A working checkout typically also has the maintainer's fork as `origin` and `saty9/django_room_schedules` as `upstream`; check `git -C room_schedules remote -v` before assuming where a change should be pushed. An Artifax integration was removed in migration `0010_remove_artifax` and no Artifax code remains anywhere.
+- **estate/**: Read-only mirror of the University's Learning Spaces Datastore (LSD) — `Campus`, `Building`, `Room` — plus the `Screen.room` target, the link models tying `room_schedules` records to it, and `LocationGroup` (location-based access). See [Estate directory](#estate-directory) and [Location groups](#teams-location-groups-and-groups).
 - **helpdocs/**: In-app user documentation rendered from markdown at `/admin/help/`. See [Help documentation](#help-documentation).
 
 ### Display Pipeline
@@ -83,7 +84,7 @@ Consequences to remember:
 - A bare `os.getenv("KEY")` (no default) returns `None` when absent — currently `SECRET_KEY` and `HOSTNAME` behave this way (missing `SECRET_KEY` fails startup; missing `HOSTNAME` leaves `ALLOWED_HOSTS=[None, '127.0.0.1']`).
 - After bumping `base_settings.py`, the deploy submodule pointer must be advanced to a commit containing the change before the deploy override can rely on it.
 
-Key env-driven settings (read in the deploy `settings.py`): `O365_CLIENT_ID`, `O365_TENANT_ID`, `O365_CLIENT_SECRET`, `AUTO_MAKE_SCREENS_FOR_NEW_IPS`, `ADMIN_SITE_NAME`, `ENTRA_*`, `CELERY_BROKER_URL`/`CELERY_RESULT_BACKEND`.
+Key env-driven settings (read in the deploy `settings.py`): `O365_CLIENT_ID`, `O365_TENANT_ID`, `O365_CLIENT_SECRET`, `AUTO_MAKE_SCREENS_FOR_NEW_IPS`, `ADMIN_SITE_NAME`, `ENTRA_*`, `CELERY_BROKER_URL`/`CELERY_RESULT_BACKEND`, `LSD_API_KEY`/`LSD_API_BASE_URL`/`LSD_SYNC_*`.
 
 **`advertising/settings.py` is untracked and ignored.** It routinely holds real credentials, so only `advertising/settings.sample.py` is committed. Consequences:
 
@@ -111,16 +112,21 @@ Celery broker/backend defaults to `redis://redis:6379/0`.
 
 **Behind a reverse proxy:** the IP comes from `request.META['REMOTE_ADDR']` by default, which will be the proxy's loopback address — every request would look the same and the gate would deny everyone. Set `USE_FIRST_FORWARDED_FOR_IP=True` (leftmost `X-Forwarded-For` entry, i.e. original client) or `USE_LAST_FORWARDED_FOR_IP=True` (rightmost, i.e. nearest trusted hop) in production settings, and make sure nginx forwards `X-Forwarded-For`. Pick `_FIRST_` only if the whole proxy chain is trusted, since clients can spoof leading XFF entries otherwise.
 
-### Teams (multi-tenancy) vs. Groups (capabilities)
+### Teams, location groups and Groups
 
-The admin uses two orthogonal authorisation layers — keep them separate.
+The admin uses three orthogonal authorisation layers — keep them separate. Teams decide *whose* objects you see, location groups decide *where* (which estate places, and so which screens), and `auth.Group` permissions decide *what you can do*.
 
 - **`Team`** (in `screens.models.team`) scopes *what you can see*. Each `Source`, `Playlist`, `Screen`, and `Schedule` carries a `teams` M2M; staff users see only objects whose `teams` overlap with their own membership. Active team is held in `request.session['active_team_id']` and resolved to `request.active_team` by `ActiveTeamMiddleware`. Superusers default to the `ALL_TEAMS` sentinel (see all teams' content). Regular users default to their first team alphabetically. Switching goes through `admin:set_active_team`; the picker itself is this project's override of `templates/unfold/helpers/userlinks.html` plus `screens/templatetags/team_switcher.py` — **not** Unfold's `SITE_DROPDOWN`, which is not configured.
 - **`auth.Group`** + Django `Permission` scope *what you can do* (add/change/delete on each model). Groups are unchanged from stock Django — create `Content Editor`, `Scheduler`, etc. with the relevant model permissions.
-- Both layers compose: the queryset is intersected with the team filter, then the standard permission gates apply.
+- **`LocationGroup`** (in `estate.models.access`) scopes *where*. A named set of `Campus`/`Building`/`Room` grants with members (through `LocationGroupMembership`); a user's places are the union over their groups, each grant covering everything beneath it, and a room grant revealing its building and campus but not their other rooms. All scoping goes through `estate/location_scope.py`: `scope_to_locations(qs, request)` for Room/Building/Campus/Screen querysets, `scope_screens` for team ∩ location, `sees_all_locations(request)` for the exemption check. Content, playlists and schedules are not location-bound.
+- **Location access fails closed.** No group ⇒ no screens and no estate rows. Exempt: superusers and holders of `estate.access_all_locations`, which estate migration `0005` granted — via an "All locations" auth Group — to every staff user who existed then. So **any test that logs in a non-superuser to look at screens or the estate must call `estate.tests.helpers.grant_all_locations(user)`** (or put them in a location group), or it sees nothing. Unlike `scope_to_active_team`, there is no fail-open branch: it depends only on `request.user`, never on middleware having run.
+- Location scoping uses `pk__in` subqueries, never joins, on purpose: a join from Campus/Building down to rooms is reused by any later `Count()` on the same path and silently changes what it counts, and `.distinct()` breaks bulk `.delete()`. Keep it that way.
+- `ScreenAdmin.formfield_for_foreignkey` sets the `room` field's queryset to the scoped rooms. That is **load-bearing**: the picker's options already come from the scoped `RoomAdmin`, but the field *validates* against its own queryset, which defaults to every room — so without it a crafted POST places a screen anywhere. The same field is `required` for restricted users, since a room-less screen would vanish from their list.
+- The layers compose: the queryset is intersected with the team filter and, for screens and estate rows, the location filter; then the standard permission gates apply.
 - Only superusers can edit the `teams` field on an object or manage `Team` / `TeamMembership` records. Regular users have `teams` hidden in the admin and inherit their currently active team automatically on create.
 - Cross-team `PlaylistRelation` inheritance: a regular user may wire `child → parent` if they are a member of at least one team owning each (so a user in teams A+B can have a Team A playlist inherit from a Team B playlist). Superusers can wire any relation.
 - A team can only be deleted when it has zero members and zero owned objects. Enforced both in `TeamAdmin.has_delete_permission` and a `pre_delete` signal on `Team`.
+- Only superusers can manage location groups or their membership (`LocationGroupAdmin`, the user-page inline, the add-user field), for the same reason as teams: a location group grants access. The **Room Schedules admin is not location-scoped yet** — see `KNOWN_ISSUES.md`.
 
 ### Admin UI
 
@@ -144,6 +150,8 @@ Each user picks an admin accent colour from the sidebar user menu; the choice is
 
 On an unfold upgrade, **re-copy each from the new vendor version and re-apply the project's change** rather than assuming the old copy still fits. `navigation_user.html` is deliberately kept to a one-line diff so this stays cheap, and a test asserts it has not drifted further.
 
+A fourth fork exists for the same reason but against a different vendor: `templates/admin/room_schedules/room/_o365_tabs.html` shadows the submodule's own copy to add the "Estate links" tab. `TEMPLATES.DIRS` is searched before `APP_DIRS`, so no submodule edit is needed. Re-diff it on a submodule update; `estate/tests/test_room_links.py::TabTemplateDriftTests` fails if it loses one of the vendor's own tabs.
+
 **Why not Unfold's `extra_userlinks` block**, which exists for exactly this purpose: it is filled via `{% block extra_userlinks %}`, reachable only by overriding a template in the inheritance chain. `admin/base_site.html` looks like the hook, but `templates/admin/index.html` extends `admin/base.html` **directly**, so a `base_site.html` override silently misses the dashboard. Covering everything would mean forking Unfold's 48-line `admin/base.html` — a bigger fork than the file we actually want to touch.
 
 **Why each palette needs two ramps.** Unfold uses `--color-primary-500` for text on white (`text-primary-500`) *and* on near-black (`dark:text-primary-500`). No single mid-tone clears 4.5:1 against both, so its stock purple misses on both sides (4.12:1 and 4.30:1) — that is the original accessibility complaint, and it is structural, not a bad hue. Hence two seams:
@@ -162,10 +170,48 @@ Those CSS files are **generated from `ACCENTS`** — do not hand-edit them; the 
 - `_get_colors` **mutates the dict it returns**, so `accent_palette` must return a fresh `dict(...)`. Sharing the registry's dict would let one request permanently recolour the admin for everyone.
 - Dark mode is **class-based** (`html.dark`, set by Alpine on `<html>`). A move to `@media (prefers-color-scheme)` would silently disable every dark override.
 - Colours are emitted into `<style id="unfold-theme-colors">` in `unfold/layouts/skeleton.html`.
+- Unfold's `.select2-results__option:hover` background also matches select2 *groups*, since a group is an option that contains its children — so hovering one building in the screen form's campus-grouped Building box lit up the whole campus. `estate/static/estate/css/building_picker.css` resets `[role="group"]:hover` by out-ranking that selector, and `estate.tests.test_room_picker` pins the selector so an upgrade that changes it fails.
 
 Unfold ships a **compiled** Tailwind bundle containing only the classes its own templates use, so an arbitrary utility class may simply not exist. Project admin CSS is therefore hand-written against Unfold's custom properties (`accent_switch.css`, `admin_table_links.css`, `recurrence_unfold.css`) rather than composed from utilities.
 
 `uv run python manage.py test screens.tests.test_accent_picker` is the post-upgrade smoke test: it asserts contrast for every palette, checks the rendered page rather than the config, and carries a `UnfoldCouplingTests` class whose whole job is to fail loudly when one of the assumptions above stops holding.
+
+### Estate directory
+
+`estate/` mirrors the University's Learning Spaces Datastore so `Screen.room` can point at a real room, and so the admin can filter and roll up by building.
+
+**One endpoint, paginated, and flat.** `GET {LSD_API_BASE_URL}/v1/signage/rooms/`, authenticated with a `key:` request header — a feed the LSD team built for this app, returning a `{count, next, previous, results}` envelope. `estate/lsd_requests.py` walks `next` at `page_size=1000` (the upstream cap; larger values are silently clamped) and hands the reconciler one list. gzip is on, via httpx's default `Accept-Encoding`. `LSD_SYNC_TIMEOUT` is a per-page read timeout.
+
+**The walk refuses rather than returning a partial list**, because the reconciler deletes by absence. `count` is pinned from the **first** page and any page reporting a different one aborts the run: a row deleted upstream mid-walk shifts later rows back a position, so a room slides into a page already read and is skipped, and every later page then agrees on the smaller total — only the first page's count exposes it. The run also aborts if the collected rows ≠ that count, if an id repeats across pages, or if `next` leaves the configured scheme/host (the client carries the API key, so it must not follow a URL the response names off-site). All of these are `RuntimeError`, which `sync_estate` retries.
+
+*(Two siblings, both deliberately not used. `/v1/rooms/` is a bare, uncounted array whose `active` is a meaningless legacy string. `/v1/export/rooms/` covers only centrally managed teaching space and flattens the campus names. The signage feed is the authoritative one. Don't switch without re-reading this section.)*
+
+There is no `/buildings/` or `/campuses/` endpoint — campus and building arrive as *strings on every room row* — so `Campus` and `Building` are **derived** from the distinct values across the payload.
+
+- **Campus identity is `campus_lst`**, the internal name ("Central North", not "Central"). `campus_name_short` is stored as `Campus.code` but is emphatically *not* a key: it arrives in mixed case and blank on some rows (and the old feed used `KB` for two campuses). It is resolved by majority vote, blanks not voting. The feed's `campus` field is a third, different thing — a coarser public grouping ("Central" spans three `campus_lst` values), blank on ~47% of rooms and inconsistent within buildings — stored as text on `Room.public_campus` and never keyed on.
+- **Building identity is `(campus_lst, building)`.** The campus must be in the key because "Medical School" genuinely exists on two campuses. The consequence to know: **a building renamed upstream becomes a new row**, and the old one is swept once empty. Screens are unaffected — rooms key on their own `lsd_id`.
+- **`building_code` is Estates' own code, stored per room, never a key.** It is many-to-many with our building names: some of our names carry several codes (IGMM), some codes cover several of our names (`0228` spans "40 George Sq" and its Lower Hub), and guest/leased buildings have none. Each *room* carries one or none, so it lives on `Room`; `Building.estates_codes` rolls it up. A single column on `Building` would be lossy.
+
+**Reconciliation follows the `sync_o365_rooms` precedent** — delete what nothing depends on, flag what something does — but `_referenced_pks` walks `_meta.related_objects` rather than naming `Screen.room` explicitly, so a future FK into the estate counts automatically. **A room a Screen points at is never deleted** — nor a room, building or campus a `LocationGroup` grants, since its M2M is a related object too. Children are swept before parents so a building emptied this run goes in the same run. A granted *building* that goes stale is usually an upstream rename, which leaves the grant covering nothing; it is flagged (`stale_grants_q()`, the Location groups list's **Needs review**, a superuser dashboard notice), not carried across automatically.
+
+**The safety valve the O365 sync lacks.** The whole feed is fetched before anything is written, and the count check above stops a short read. Behind it, below `LSD_SYNC_MIN_ROOMS` or a shrink past `LSD_SYNC_MAX_SHRINK_PCT` the run still upserts but **skips reconciliation entirely** and logs at ERROR — the second line, for a response that is complete by its own count but wrongly filtered upstream. Refusing to delete is recoverable; deleting is not.
+
+**`Room.active` means "open today"** — derived upstream from the room's start and end dates, which the API does not expose, so it can flip at midnight with no upstream edit and is only as fresh as the last sync. Only an explicit JSON `false` makes a room inactive; anything malformed reads as active, so bad data fails towards no flag. It is displayed and filtered on, and it badges any screen in an inactive room (screen list Room column, `?room_set=inactive`, the per-building page), but **it never hides a room from the picker**: a room opening next month may rightly get its screen now.
+
+**Fields the signage feed does not carry are not modelled.** Moving to it dropped `usage`, `av_type`, `support_group` and `host_key` (migration `0003_signage_feed`); a column the sync can no longer fill would keep its last value for ever and look current. The feed normalises the old literal-`"None"` strings to null, and excludes the test campus; `sync._text()` still folds `"None"` as a cheap defence.
+
+**Two things called Building and Room.** `estate.Building`/`estate.Room` are the University's record; `room_schedules.Building`/`room_schedules.Room` are display configuration created when an operator promotes an O365 mailbox. Keep them apart — importing the estate into the latter would flood the building grid displays, which render `Building.room_set`. `verbose_name` disambiguates them in the admin ("estate building", "estate room"); in code, `from estate.models import Building as EstateBuilding`.
+
+**The link between them is owned by `estate`**, as `BuildingLink`/`RoomLink`, *not* as FK columns on the submodule models. An FK into `estate` from `room_schedules` would make this app a hard requirement of a submodule shared with consumers that do not have it — `fields.E300` at startup, not a missing feature — and would split every change across two repos. `estate/matching.py` scores suggestions (stdlib `difflib` only); nothing is ever linked automatically and no suggestion is pre-selected.
+
+**The estate admins are read-only at `has_*_permission`, not via `readonly_fields`.** `readonly_fields` still renders a Save button and still writes, and an edit here survives only until the next nightly run — a control that silently discards the operator's work. False for superusers too.
+
+**No team scoping, and it is not a judgement call.** Team ownership is conferred by `TeamScopedAdminMixin.save_related` from `request.active_team`; these rows are written by a Celery task, so every one would be created team-less and `scope_to_active_team` would filter them all out for every non-superuser. Scoping happens one level up, on the `Screen` that points at the room. Read access is controlled on the correct axis, by `estate.view_*` permissions. **Location scoping does apply** (`ReadOnlyMirrorAdmin.get_queryset`) — it keys on grants held by the user, not on ownership stored on the row, so the Celery problem does not arise. Pages that draw on the whole estate — `room_links_view`, the link admins, `estate_sync_now_view` — require `sees_all_locations` instead.
+
+Two traps worth knowing:
+
+- The screen form picks a room in two steps (`estate/picker.py`): a local, campus-grouped **Building** select that exists only on `ScreenAdminForm`, then a **Room** autocomplete served by `RoomPickerJsonView` (Django's `AutocompleteJsonView` narrowed to one building, labels `name (lsd_id)` because the datastore holds a few same-named duplicates). That view checks `has_view_permission` on **`RoomAdmin`**, so a user with `screens.change_screen` but no `estate.view_room` can pick a building but gets "The results could not be loaded" for rooms. Grant the estate view permissions alongside screen editing. Two quirks of the picker are deliberate: `RoomPickerWidget.value_omitted_from_data` returns `False`, because the disabled-until-a-building-is-chosen select is not submitted and `Screen.room`'s default would otherwise make Django keep the old room; and its media repeats `autocomplete.js`, because Django only orders media files that share a list.
+- A related list filter that renders no options still has its lookup parameter popped by `ChangeList.get_filters`, so a hidden filter does not merely fail to render — it **silently ignores** `?room__building__id__exact=N` and shows everything. `EstateRelatedFilter.has_output()` overrides that whenever a value is selected, because the per-building page and the dashboard both link with exactly that parameter.
 
 ### Help documentation
 
@@ -207,6 +253,6 @@ DJANGO_SETTINGS_MODULE=advertising.screenshot_settings \
 
 ### Models location
 
-All `screens` models are split into individual files under `screens/models/` and re-exported from `screens/models/__init__.py`. The `room_schedules` models follow the same pattern under `room_schedules/models/`.
+All `screens` models are split into individual files under `screens/models/` and re-exported from `screens/models/__init__.py`. The `room_schedules` and `estate` models follow the same pattern under `room_schedules/models/` and `estate/models/`.
 
 `helpdocs` is the exception: a single `models.py` holding one unmanaged model that exists only to carry the `view_technical_docs` permission. It has no table and no rows.

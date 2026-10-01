@@ -51,6 +51,11 @@ Either way a Room is created. Then open it under **Rooms** to set its display
 name and display options — see
 [Room and building displays](help:room-displays).
 
+The third tab, **Estate links**, is a separate and optional step: tying these
+rooms to the University's own room record so reports can line the two up. See
+[The estate directory](help:estate-directory). Assigning a mailbox to a building
+does not link it, and nothing here depends on the link being made.
+
 ## Managing assigned rooms
 
 The **Assigned per Building** tab lists every room already in use, grouped by
