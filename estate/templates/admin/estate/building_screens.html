@@ -70,7 +70,7 @@
                         <tbody class="block lg:table-row-group">
                             {% for screen in screens %}
                                 <tr class="block border border-base-200 mb-3 rounded-default lg:table-row lg:border-none lg:mb-0 lg:rounded-none dark:border-base-800">
-                                    <td class="border-b border-base-200 px-3 py-2 font-medium text-font-important-light dark:text-font-important-dark lg:border-b-0 lg:border-t dark:border-base-800">{% include "admin/estate/_screen_room_cell.html" with room=screen.room %}</td>
+                                    <td class="border-b border-base-200 px-3 py-2 font-medium text-font-important-light dark:text-font-important-dark lg:border-b-0 lg:border-t dark:border-base-800">{% if screen.room %}{% include "admin/estate/_screen_room_cell.html" with room=screen.room %}{% else %}<span class="font-normal text-font-subtle-light dark:text-font-subtle-dark">No room</span>{% endif %}</td>
                                     <td class="border-b border-base-200 px-3 py-2 lg:border-b-0 lg:border-t dark:border-base-800">
                                         <a class="text-primary-600 dark:text-primary-400 underline"
                                            href="{% url 'admin:screens_screen_change' screen.pk %}">{{ screen.name }}</a>
@@ -92,7 +92,7 @@
                 </div>
             {% else %}
                 <p class="text-sm text-font-subtle-light dark:text-font-subtle-dark">
-                    None of your teams has a screen in a room in this building.
+                    None of your teams has a screen in this building.
                 </p>
             {% endif %}
         </section>

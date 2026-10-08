@@ -20,7 +20,7 @@ from collections import Counter, defaultdict
 from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
-from django.db.models import Q
+from django.db.models import F, OuterRef, Q, Subquery
 from django.utils import timezone
 
 from estate.models import Building, Campus, Room
@@ -241,6 +241,10 @@ def reconcile_estate(rows, run_started=None):
     campuses = _sync_campuses(parsed, run_started, summary)
     buildings = _sync_buildings(parsed, campuses, run_started, summary)
     _sync_rooms(parsed, buildings, run_started, summary)
+    # Whether or not this run reconciles: the rooms above have moved either
+    # way. And before the sweep, or a screen still naming the building a room
+    # left would hold that building as "referenced" for a run.
+    _realign_screens(summary)
 
     if _should_reconcile(rows, summary):
         # Children before parents, so a building emptied this run is deletable
@@ -347,3 +351,22 @@ def _sync_rooms(parsed, buildings, run_started, summary):
         created += was_created
     summary['rooms'] = len(parsed)
     summary['rooms_created'] = created
+
+
+def _realign_screens(summary):
+    """Point each screen with a room at that room's building again.
+
+    `Screen.save` keeps the two in step, but this task moves rooms underneath
+    screens without saving them — most often when a building is renamed
+    upstream and becomes a new row. A queryset update rather than save(): a
+    full save bumps `last_updated` and restarts every device's rotation, for a
+    change the player never sees.
+    """
+    from screens.models import Screen
+
+    moved = (Screen.objects.filter(room__isnull=False)
+             .exclude(building=F('room__building')))
+    count = moved.update(building=Subquery(
+        Room.objects.filter(pk=OuterRef('room')).values('building')[:1]))
+    if count:
+        summary['screens_realigned'] = count

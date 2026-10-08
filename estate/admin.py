@@ -188,7 +188,7 @@ class BuildingAdmin(ReadOnlyMirrorAdmin):
         coded = ~Q(rooms__building_code='')
         return super().get_queryset(request).annotate(
             n_rooms=Count('rooms', distinct=True, filter=visible),
-            n_screens=_visible_screen_counts(request, 'room__building'),
+            n_screens=_visible_screen_counts(request, 'building'),
             # Sorts the codes column by each building's lowest code.
             first_code=Min('rooms__building_code',
                            filter=coded & visible if visible else coded),

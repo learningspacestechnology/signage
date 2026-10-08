@@ -318,16 +318,16 @@ class EstateFilterTests(TestCase):
     # --- filtering ----------------------------------------------------------
 
     def test_filtering_by_building_returns_only_its_screens(self):
-        resp = self._changelist(room__building__id__exact=str(self.appleton.pk))
+        resp = self._changelist(building__id__exact=str(self.appleton.pk))
         self.assertEqual({s.name for s in self._rows(resp)}, {"screenAppleton"})
 
     def test_another_teams_building_id_yields_nothing(self):
-        resp = self._changelist(room__building__id__exact=str(self.forum.pk))
+        resp = self._changelist(building__id__exact=str(self.forum.pk))
         self.assertEqual(list(self._rows(resp)), [])
 
     def test_filtering_by_campus_returns_its_screens(self):
         resp = self._changelist(
-            room__building__campus__id__exact=str(self.central.pk))
+            building__campus__id__exact=str(self.central.pk))
         self.assertEqual({s.name for s in self._rows(resp)}, {"screenAppleton"})
 
     def test_the_room_set_filter_finds_screens_with_no_location(self):
@@ -338,6 +338,18 @@ class EstateFilterTests(TestCase):
         resp = self._changelist(room_set="yes")
         self.assertEqual(
             {s.name for s in self._rows(resp)}, {"screenAppleton", "screenJcmb"})
+
+    def test_a_screen_in_a_building_with_no_room_is_placed_not_backlog(self):
+        Screen.objects.filter(pk=self.screen_unplaced.pk).update(building=self.swann)
+
+        resp = self._changelist(room_set="building")
+        self.assertEqual({s.name for s in self._rows(resp)}, {"screenUnplaced"})
+        self.assertEqual(list(self._rows(self._changelist(room_set="no"))), [])
+
+        resp = self._changelist(building__id__exact=str(self.swann.pk))
+        self.assertEqual({s.name for s in self._rows(resp)}, {"screenUnplaced"})
+        self.assertOffered(self._filter_choices(resp, "building"), "Swann Building")
+        self.assertContains(resp, "Swann Building")  # the Building column
 
     def test_the_room_set_filter_finds_screens_in_an_inactive_room(self):
         """The datastore says the room is not open today."""
@@ -358,11 +370,11 @@ class EstateFilterTests(TestCase):
         Screen.objects.filter(pk=self.screen_at.pk).update(
             last_seen=timezone.now() - timedelta(hours=2))
         resp = self._changelist(
-            room__building__id__exact=str(self.appleton.pk),
+            building__id__exact=str(self.appleton.pk),
             status=ScreenStatus.OFFLINE)
         self.assertEqual({s.name for s in self._rows(resp)}, {"screenAppleton"})
         empty = self._changelist(
-            room__building__id__exact=str(self.appleton.pk),
+            building__id__exact=str(self.appleton.pk),
             status=ScreenStatus.ONLINE)
         self.assertEqual(list(self._rows(empty)), [])
 
@@ -374,7 +386,7 @@ class EstateFilterTests(TestCase):
         would hide *and* silently ignore the parameter, showing every screen.
         """
         Screen.objects.filter(pk=self.screen_jcmb.pk).update(room=None)
-        resp = self._changelist(room__building__id__exact=str(self.appleton.pk))
+        resp = self._changelist(building__id__exact=str(self.appleton.pk))
         self.assertEqual({s.name for s in self._rows(resp)}, {"screenAppleton"})
 
     # --- building narrowed by campus ---------------------------------------
@@ -388,7 +400,7 @@ class EstateFilterTests(TestCase):
 
     def test_a_selected_campus_narrows_the_building_filter_to_it(self):
         choices = self._filter_choices(
-            self._changelist(room__building__campus__id__exact=str(self.central.pk)),
+            self._changelist(building__campus__id__exact=str(self.central.pk)),
             "building")
         self.assertOffered(choices, "Appleton Tower")
         self.assertNotOffered(choices, "JCMB")
@@ -396,37 +408,37 @@ class EstateFilterTests(TestCase):
     def test_the_narrowed_building_filter_stays_team_scoped(self):
         """Informatics Forum is on the selected campus, but holds only Bravo's screen."""
         choices = self._filter_choices(
-            self._changelist(room__building__campus__id__exact=str(self.central.pk)),
+            self._changelist(building__campus__id__exact=str(self.central.pk)),
             "building")
         self.assertNotOffered(choices, "Informatics Forum")
 
     def test_a_campus_with_one_screened_building_still_shows_the_building_filter(self):
         """Hiding it there would read as the filter breaking on selection."""
-        resp = self._changelist(room__building__campus__id__exact=str(self.kb.pk))
+        resp = self._changelist(building__campus__id__exact=str(self.kb.pk))
         choices = self._filter_choices(resp, "building")
         self.assertIsNotNone(choices)
         self.assertOffered(choices, "JCMB")
         self.assertNotOffered(choices, "Appleton Tower")
 
     def test_a_junk_campus_value_does_not_break_the_page(self):
-        resp = self._changelist(room__building__campus__id__exact="nope")
+        resp = self._changelist(building__campus__id__exact="nope")
         self.assertIn(resp.status_code, (200, 302))
 
     def test_switching_campus_drops_a_building_not_on_it(self):
-        resp = self._changelist(room__building__id__exact=str(self.appleton.pk))
-        self.assertNotIn("room__building__id__exact",
+        resp = self._changelist(building__id__exact=str(self.appleton.pk))
+        self.assertNotIn("building__id__exact",
                          self._choice_query(resp, "campus", "Kings Buildings"))
 
     def test_choosing_the_selected_buildings_own_campus_keeps_it(self):
-        resp = self._changelist(room__building__id__exact=str(self.appleton.pk))
-        self.assertIn(f"room__building__id__exact={self.appleton.pk}",
+        resp = self._changelist(building__id__exact=str(self.appleton.pk))
+        self.assertIn(f"building__id__exact={self.appleton.pk}",
                       self._choice_query(resp, "campus", "Central"))
 
     def test_clearing_the_campus_keeps_the_building(self):
         resp = self._changelist(
-            room__building__id__exact=str(self.appleton.pk),
-            room__building__campus__id__exact=str(self.central.pk))
-        self.assertIn(f"room__building__id__exact={self.appleton.pk}",
+            building__id__exact=str(self.appleton.pk),
+            building__campus__id__exact=str(self.central.pk))
+        self.assertIn(f"building__id__exact={self.appleton.pk}",
                       self._choice_query(resp, "campus", "All"))
 
     # --- support type -------------------------------------------------------
@@ -475,7 +487,7 @@ class EstateFilterTests(TestCase):
         self._set_support()
         Room.objects.filter(pk=self.lt_a.pk).update(support_type="Central")
         resp = self._changelist(
-            support="Central", room__building__campus__id__exact=str(self.kb.pk))
+            support="Central", building__campus__id__exact=str(self.kb.pk))
         self.assertEqual({s.name for s in self._rows(resp)}, {"screenJcmb"})
 
     # --- columns ------------------------------------------------------------
@@ -549,7 +561,7 @@ class EstateFilterVisibilityTests(TestCase):
     def test_the_room_filter_is_still_offered(self):
         """It is the commissioning backlog, and useful precisely when empty."""
         resp = self.client_a.get('/admin/screens/screen/')
-        self.assertContains(resp, "No room set")
+        self.assertContains(resp, "No location set")
 
 
 class ChangelistQueryCountTests(TestCase):

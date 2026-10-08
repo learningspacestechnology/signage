@@ -53,7 +53,7 @@ it.
 
 ## Screens by building
 
-Once screens have been assigned to rooms, a **Screens by building** panel appears
+Once screens have been placed in buildings, a **Screens by building** panel appears
 listing the buildings your screens are in, with the online, needing-attention and
 offline counts for each. **Buildings with something wrong come first**, so the
 one worth opening is at the top.
@@ -67,10 +67,11 @@ Two things to keep in mind reading it:
 - **The counts cover your teams only**, like everything else on this page, and
   your locations if your account is limited to some. A building may hold more
   screens than the numbers say.
-- Screens with no room set are counted separately, on the line beneath, which
-  links to them.
+- A screen in a building but not in a room, such as a foyer display, counts in
+  its building's row. Screens with no location at all are counted separately,
+  on the line beneath, which links to them.
 
-The panel is absent entirely until at least one screen has a room, so an
+The panel is absent entirely until at least one screen has a building, so an
 unconfigured site sees an unchanged dashboard.
 
 ## Content by type

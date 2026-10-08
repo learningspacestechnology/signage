@@ -178,7 +178,19 @@ class Screen(models.Model):
         "estate.Room", null=True, blank=True, default=None,
         on_delete=models.SET_NULL, related_name="screens",
         help_text="Where this screen physically is, from the estate directory. "
-                  "Leave blank for a screen that is not in a catalogued room.")
+                  "Leave blank for a screen in the building but not in a "
+                  "catalogued room, such as a foyer.")
+    # The room's building whenever there is a room -- save() enforces it, and
+    # estate.sync re-applies it when a room moves -- so building-level
+    # questions (filters, the dashboard, the per-building page) read this one
+    # column. Set on its own only for a screen in no catalogued room: most
+    # foyers and entrance halls are not in the datastore. SET_NULL for the
+    # reason given on `room`.
+    building = models.ForeignKey(
+        "estate.Building", null=True, blank=True, default=None,
+        on_delete=models.SET_NULL, related_name="screens",
+        help_text="The building this screen is in. Set from the room when "
+                  "there is one.")
     last_seen = models.DateTimeField(auto_now_add=True, blank=True)
     # The screen's half of the publish signal, matching Playlist.last_updated.
     # aggregate_last_updated() in screens/views.py maxes over both, so a change
@@ -252,6 +264,19 @@ class Screen(models.Model):
         super().clean()
         if self.pk and not self.teams.exists():
             raise ValidationError("Screen must belong to at least one team.")
+
+    def save(self, *args, **kwargs):
+        # Here rather than in the form, so every writer holds it: the admin,
+        # auto-created screens, fixtures. A save that names its fields and
+        # leaves `room` out -- the heartbeat's update_fields=["last_seen"] --
+        # cannot have changed the room, and is left alone so it costs nothing.
+        update_fields = kwargs.get("update_fields")
+        if self.room_id is not None and (
+                update_fields is None or "room" in update_fields):
+            self.building_id = self.room.building_id
+            if update_fields is not None:
+                kwargs["update_fields"] = {*update_fields, "building"}
+        super().save(*args, **kwargs)
 
     def has_ticker(self):
         return self.ticker_enabled and bool(self.ticker_text.strip())

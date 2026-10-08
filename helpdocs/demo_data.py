@@ -453,8 +453,9 @@ def seed():
         )
 
     # Most demo screens get a room; the Sports Centre one is deliberately left
-    # without, so the "No room set" filter and the dashboard's unassigned line
-    # both have something to report.
+    # without, so the "No location set" filter and the dashboard's unplaced
+    # line both have something to report. update() skips Screen.save, so the
+    # building is set here too.
     screen_rooms = {
         'Riverside Library — Foyer': 'RVL-FOYR',
         'Riverside Library — Level 2': 'RVL-0214',
@@ -464,8 +465,9 @@ def seed():
     for screen in screens:
         lsd_id = screen_rooms.get(screen.name)
         if lsd_id:
+            room = estate_rooms[lsd_id]
             Screen.objects.filter(pk=screen.pk).update(
-                room=estate_rooms[lsd_id])
+                room=room, building=room.building)
 
     # A whole building plus one room elsewhere, so the form shows both kinds
     # of grant and the list's summary reads "1 building, 1 room".

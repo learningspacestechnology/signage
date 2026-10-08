@@ -54,3 +54,70 @@ class ScreenPublishTimestampTests(TestCase):
             Screen.objects.filter(pk=self.screen.pk).update(name="renamed")
         self.screen.refresh_from_db()
         self.assertEqual(self.screen.last_updated, self.created_at)
+
+
+class ScreenBuildingTests(TestCase):
+    """`building` is the room's whenever there is a room; alone otherwise."""
+
+    def setUp(self):
+        from estate.models import Building, Campus, Room
+
+        campus = Campus.objects.create(name="Central")
+        self.at = Building.objects.create(key="c|at", name="Appleton Tower",
+                                          campus=campus)
+        self.forum = Building.objects.create(key="c|if", name="Informatics Forum",
+                                             campus=campus)
+        self.lt2 = Room.objects.create(lsd_id="at-lt2", name="LT2", building=self.at)
+        playlist = Playlist.objects.create(name="base")
+        self.screen = Screen.objects.create(
+            name="scr", ip="10.0.0.9",
+            schedule=Schedule.objects.create(name="s", default_playlist=playlist))
+
+    def test_a_room_sets_the_building(self):
+        self.screen.room = self.lt2
+        self.screen.save()
+        self.screen.refresh_from_db()
+        self.assertEqual(self.screen.building, self.at)
+
+    def test_the_room_wins_over_a_disagreeing_building(self):
+        self.screen.room, self.screen.building = self.lt2, self.forum
+        self.screen.save()
+        self.screen.refresh_from_db()
+        self.assertEqual(self.screen.building, self.at)
+
+    def test_a_building_alone_is_kept(self):
+        self.screen.building = self.forum
+        self.screen.save()
+        self.screen.refresh_from_db()
+        self.assertEqual(self.screen.building, self.forum)
+
+    def test_saving_only_the_room_writes_the_building_too(self):
+        self.screen.room = self.lt2
+        self.screen.save(update_fields=["room"])
+        self.screen.refresh_from_db()
+        self.assertEqual(self.screen.building, self.at)
+
+    def test_the_heartbeat_does_not_load_the_room(self):
+        """One write, once a minute, for every device in the estate."""
+        Screen.objects.filter(pk=self.screen.pk).update(room=self.lt2)
+        screen = Screen.objects.get(pk=self.screen.pk)
+        with self.assertNumQueries(1):
+            screen.last_seen = timezone.now()
+            screen.save(update_fields=["last_seen"])
+
+    def test_the_migration_fills_the_building_from_the_room(self):
+        from importlib import import_module
+
+        from django.apps import apps
+
+        Screen.objects.filter(pk=self.screen.pk).update(room=self.lt2, building=None)
+        bare = Screen.objects.create(
+            name="bare", ip="10.0.0.10", schedule=self.screen.schedule)
+
+        import_module("screens.migrations.0038_screen_building").backfill_building(
+            apps, None)
+
+        self.screen.refresh_from_db()
+        bare.refresh_from_db()
+        self.assertEqual(self.screen.building, self.at)
+        self.assertIsNone(bare.building)

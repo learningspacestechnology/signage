@@ -10,6 +10,8 @@ See `estate.models.access` for the model. The rules:
   on ``request.user``, so it behaves the same on every path.
 - A room grant reveals its building and campus; a building or campus grant
   reveals everything beneath it.
+- A screen in a building but no room needs that building granted outright,
+  by a building or campus grant. A room grant in the building is not enough.
 
 Every filter here goes through a ``pk__in`` subquery rather than a join. A join
 across the three grant tables would repeat rows once per matching grant, and a
@@ -76,6 +78,26 @@ def rooms_granted_by(groups):
     )
 
 
+def buildings_wholly_granted_by(groups):
+    """Every building a building or campus grant covers, as a lazy queryset.
+
+    Narrower than the buildings a user can *see*: a room grant reveals its
+    building, but covers only that room in it, so it does not reach a screen
+    placed in the building with no room.
+    """
+    through = LocationGroup
+    by_building = (through.buildings.through.objects
+                   .filter(locationgroup__in=groups).values('building'))
+    by_campus = (through.campuses.through.objects
+                 .filter(locationgroup__in=groups).values('campus'))
+    return Building.objects.filter(Q(pk__in=by_building) | Q(campus__in=by_campus))
+
+
+def _user_groups(request):
+    return LocationGroupMembership.objects.filter(
+        user_id=request.user.pk).values('group')
+
+
 def visible_room_ids(request):
     """`ALL_LOCATIONS`, or a lazy subquery of the room pks the user may see.
 
@@ -84,9 +106,15 @@ def visible_room_ids(request):
     """
     if sees_all_locations(request):
         return ALL_LOCATIONS
-    groups = LocationGroupMembership.objects.filter(
-        user_id=request.user.pk).values('group')
-    return rooms_granted_by(groups).order_by().values('pk')
+    return rooms_granted_by(_user_groups(request)).order_by().values('pk')
+
+
+def wholly_visible_building_ids(request):
+    """`ALL_LOCATIONS`, or a lazy subquery of the buildings granted outright."""
+    if sees_all_locations(request):
+        return ALL_LOCATIONS
+    return (buildings_wholly_granted_by(_user_groups(request))
+            .order_by().values('pk'))
 
 
 def has_any_location(request):
@@ -99,9 +127,12 @@ def scope_to_locations(qs, request):
     """Filter a Room, Building, Campus or room-bearing queryset to the user's places.
 
     A model qualifies as room-bearing through a ForeignKey named ``room`` to
-    `estate.Room` — `screens.Screen` today. Rows with no room drop out for a
-    restricted user, since no grant can cover them. Anything else raises
-    rather than passing through unfiltered.
+    `estate.Room` — `screens.Screen` today. A row with a room is scoped by the
+    room alone. One with no room is visible to a restricted user only if the
+    model also has a ``building`` ForeignKey to `estate.Building` and that
+    building is granted outright, by a building or campus grant; with neither,
+    no grant can cover it. Anything else raises rather than passing through
+    unfiltered.
     """
     ids = visible_room_ids(request)
     if ids is ALL_LOCATIONS:
@@ -114,13 +145,25 @@ def scope_to_locations(qs, request):
     if model is Campus:
         return qs.filter(
             pk__in=Room.objects.filter(pk__in=ids).values('building__campus'))
-    try:
-        field = model._meta.get_field('room')
-    except FieldDoesNotExist:
-        field = None
-    if field is not None and field.many_to_one and field.related_model is Room:
-        return qs.filter(room__in=ids)
+    if _fk_to(model, 'room', Room):
+        if not _fk_to(model, 'building', Building):
+            return qs.filter(room__in=ids)
+        # room__isnull on the second branch, rather than trusting `building` to
+        # match the room: a row with a room answers to its room, the field
+        # nothing can let drift.
+        return qs.filter(
+            Q(room__in=ids)
+            | Q(room__isnull=True,
+                building__in=wholly_visible_building_ids(request)))
     raise TypeError(f"Don't know how to location-scope {model.__name__}")
+
+
+def _fk_to(model, name, target):
+    try:
+        field = model._meta.get_field(name)
+    except FieldDoesNotExist:
+        return False
+    return field.many_to_one and field.related_model is target
 
 
 def scope_screens(qs, request):

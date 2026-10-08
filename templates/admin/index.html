@@ -124,7 +124,7 @@
 
             {# ---- Screens by building ---------------------------------- #}
             {% comment %}
-                Hidden entirely until screens are assigned to rooms, so a site
+                Hidden entirely until screens are placed in buildings, so a site
                 that does not use the estate directory sees an unchanged
                 dashboard rather than an empty box.
 
@@ -174,8 +174,8 @@
                         {% if screens_by_building_more %}
                             {% blocktranslate with n=screens_by_building_more %}{{ n }} more buildings not shown.{% endblocktranslate %}
                         {% endif %}
-                        {% if screens_without_room %}{# no whitespace before the full stop #}
-                            <a href="{{ screens_without_room_url }}" class="text-primary-600 hover:underline">{% blocktranslate with n=screens_without_room %}{{ n }} not assigned to a room{% endblocktranslate %}</a>.
+                        {% if screens_without_location %}{# no whitespace before the full stop #}
+                            <a href="{{ screens_without_location_url }}" class="text-primary-600 hover:underline">{% blocktranslate with n=screens_without_location %}{{ n }} not placed in a building{% endblocktranslate %}</a>.
                         {% endif %}
                     </p>
                 </div>

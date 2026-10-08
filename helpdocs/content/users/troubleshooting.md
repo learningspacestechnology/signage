@@ -142,8 +142,9 @@ building holding only another team's displays.
 For the same reason, neither filter appears at all until your screens are spread
 across more than one building.
 
-If a screen genuinely is in that building, set its **Room**; the building appears
-as soon as you save. See [Where a screen is](help:screen-locations).
+If a screen genuinely is in that building, set its **Building** (and its
+**Room**, if it is in a catalogued one); the building appears as soon as you
+save. See [Where a screen is](help:screen-locations).
 
 ## A room is missing from the Room picker
 
@@ -156,9 +157,10 @@ above it, so check that first. Buildings are grouped under the internal campus
 names, so look under "Central North" rather than "Central".
 
 Otherwise, a missing room usually means it is newer than the last overnight
-refresh, or that it simply isn't catalogued. Ask an administrator to run a
-refresh; if it still isn't there, leave **Building** and **Room** blank. That is
-a supported state, not a gap to be filled.
+refresh, or that it simply isn't catalogued, which is usual for foyers and
+entrance halls. Ask an administrator to run a refresh; if it still isn't there,
+choose the **Building** and leave **Room** blank. That is a supported state, not
+a gap to be filled.
 
 If the **Room** box says *The results could not be loaded* for every building,
 that is a different problem: you have not been given permission to read the room

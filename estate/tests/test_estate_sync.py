@@ -227,6 +227,44 @@ class DriftTests(TestCase):
         self.assertEqual(room.pk, room_pk)
         self.assertEqual(room.building.name, "Informatics Forum")
 
+    def test_a_screen_follows_its_room_into_a_renamed_building(self):
+        """The rename makes a new Building; the screen's own column must move
+        with the room, or the filters and dashboard would file it under a
+        building that no longer exists."""
+        reconcile_estate([room_row("r1", building="Appleton Tower")])
+        screen = _screen_in(Room.objects.get())
+        last_updated = screen.last_updated
+
+        summary = reconcile_estate([room_row("r1", building="Appleton Tower (South)")])
+
+        screen.refresh_from_db()
+        self.assertEqual(screen.building.name, "Appleton Tower (South)")
+        self.assertEqual(summary['screens_realigned'], 1)
+        # Not a save(): the player never sees a building, so moving one must
+        # not restart every device's rotation.
+        self.assertEqual(screen.last_updated, last_updated)
+
+    def test_the_old_building_still_goes_in_the_same_run(self):
+        """Realigning before the sweep, so the screen no longer holds it."""
+        reconcile_estate([room_row("r1", building="Appleton Tower")])
+        _screen_in(Room.objects.get())
+
+        reconcile_estate([room_row("r1", building="Appleton Tower (South)")])
+
+        self.assertEqual(list(Building.objects.values_list('name', flat=True)),
+                         ["Appleton Tower (South)"])
+
+    def test_realigning_happens_even_when_reconciling_is_refused(self):
+        reconcile_estate([room_row("r1", building="Appleton Tower")])
+        screen = _screen_in(Room.objects.get())
+
+        with override_settings(LSD_SYNC_MIN_ROOMS=5):
+            summary = reconcile_estate([room_row("r1", building="JCMB")])
+
+        self.assertFalse(summary['reconciled'])
+        screen.refresh_from_db()
+        self.assertEqual(screen.building.name, "JCMB")
+
 
 class ReconciliationTests(TestCase):
     """Delete what nothing depends on; flag what something does."""
@@ -286,6 +324,21 @@ class ReconciliationTests(TestCase):
         self.assertTrue(Building.objects.get(name="JCMB").missing_from_source)
         self.assertTrue(
             Campus.objects.get(name="King's Buildings").missing_from_source)
+
+    def test_a_building_holding_a_screen_with_no_room_is_kept_too(self):
+        reconcile_estate([
+            room_row("r1"),
+            room_row("r2", campus="King's Buildings", building="JCMB"),
+        ])
+        screen = _screen_in(Room.objects.get(lsd_id="r2"))
+        Screen.objects.filter(pk=screen.pk).update(room=None)
+
+        reconcile_estate([room_row("r1")])
+
+        screen.refresh_from_db()
+        self.assertEqual(screen.building.name, "JCMB")
+        self.assertTrue(screen.building.missing_from_source)
+        self.assertFalse(Room.objects.filter(lsd_id="r2").exists())
 
 
 class SafetyValveTests(TestCase):

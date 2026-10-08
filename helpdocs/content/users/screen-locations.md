@@ -1,7 +1,8 @@
 # Where a screen is
 
-Recording which room each screen sits in, so you can filter the screen list by
-campus or building and see every screen in a building on one page.
+Recording which building, and usually which room, each screen sits in, so you
+can filter the screen list by campus or building and see every screen in a
+building on one page.
 
 For adding a screen and reading its status, see [Screens](help:screens).
 
@@ -39,6 +40,11 @@ Choosing a room takes two steps: the building, then the room in it.
    narrow them down.
 4. Pick the room and save.
 
+The building is saved along with the room. If the screen is somewhere in the
+building that isn't a catalogued room, stop after step 2. See
+[A screen in a building but not in a room](#a-screen-in-a-building-but-not-in-a-room)
+below.
+
 The **Room** box stays greyed out, reading *Choose a building first*, until a
 building is chosen. Changing the building empties the room, so you never end up
 with a room from the building you have just moved away from.
@@ -50,16 +56,40 @@ tell them apart. If you are unsure which of two is right, either will place the
 screen in the correct building; ask whoever administers this system to report the
 duplicate so it can be fixed at the source.
 
-To take a screen out of a room, clear the **Building** box (the × at its right)
-and save. That clears the room too. Leave both blank for a screen that is not in
-a catalogued room — a foyer pillar, a window display, a meeting space that is not
-centrally booked. Nothing breaks; the screen simply does not appear in any
-building's list.
+To take a screen out of a building altogether, clear the **Building** box (the
+× at its right) and save. That clears the room too. Leave both blank only when
+you don't know where the screen is yet; it then appears under **No location
+set** until someone places it.
 
-If your account is limited to particular locations, the **Room** is required
-instead: a screen with no room is outside every location, so it would vanish
-from your list the moment you saved it. Ask someone who can see all locations to
-look after screens that are not in a catalogued room.
+## A screen in a building but not in a room
+
+The University's record lists teaching and bookable rooms, but it rarely lists
+entrance halls, foyers, corridors or window displays, and those are where many
+screens are. For a screen like that, choose the **Building**, leave **Room**
+blank, and save.
+
+The screen then:
+
+- appears under that building in the **Campus** and **Building** filters, on
+  the dashboard's **Screens by building** panel, and on the building's own
+  screens page, where its room reads **No room**;
+- shows a dash in the **Room** column of the **Screens** list;
+- is found by the **Room → In a building, no room** filter, and is *not*
+  counted as unplaced.
+
+Check the **Room** box first, though. A few foyers and atriums *are*
+catalogued, for example "Concourse" or "Usher Foyer One". If yours is, pick
+it, because a room gives the screen more detail than a building does.
+
+If your account is limited to particular locations, you can only leave **Room**
+blank in a building you have access to **as a whole**. If you were given access
+to particular rooms in the building, you can choose the building, but saving
+without a room is refused with *Choose a room. Your locations include rooms in …
+but not the whole building*. A screen with no room in that building would be
+outside your locations, so it would vanish from your list as soon as you saved
+it. Ask someone with access to the whole building to look after it, or ask an
+administrator to extend your locations. For the same reason, the **Building**
+box is always required for you.
 
 !!! warning "\"The results could not be loaded\" means a missing permission"
     If you can choose a building but the **Room** box then says *The results
@@ -69,7 +99,7 @@ look after screens that are not in a catalogued room.
 
 ## Filtering the screen list
 
-Once screens have rooms, the **Screens** list gains three more filters:
+Once screens have buildings, the **Screens** list gains three more filters:
 
 - **Campus**
 - **Building** — once you choose a campus, this lists only that campus's
@@ -85,22 +115,25 @@ screens you can see, so an option here always returns something. Two consequence
 worth knowing:
 
 - A building where none of your screens sits is not offered. That is not a fault.
-- Until you have set a room on at least two screens in different buildings, the
+- Until you have placed at least two screens in different buildings, the
   campus and building filters do not appear at all — there is nothing yet to
   choose between. The support type filter appears once any of your screens is in
   a room with a support type.
 
-There is also a **Room** filter with three options:
+There is also a **Room** filter with four options:
 
 - **In a room**
-- **No room set** — the commissioning backlog: everything still waiting to be
-  placed. Not offered if your account is limited to particular locations, since
-  you never see a screen without a room.
+- **In a building, no room** — screens placed in a building but not in a
+  catalogued room, such as a foyer.
+- **No location set** — the commissioning backlog: screens with neither a
+  building nor a room, still waiting to be placed. Not offered if your account
+  is limited to particular locations, since you never see such a screen.
 - **In an inactive room** — screens whose room is not open today. See
   [Inactive rooms](#inactive-rooms) below.
 
-The **Building** and **Room** columns show where each screen is; a screen with no
-room shows a dash.
+The **Building** and **Room** columns show where each screen is. A dash in
+**Room** alone means the screen is in the building but not in a catalogued
+room; a dash in both means it hasn't been placed.
 
 ![The screens list, showing the building and room columns](screenshot:screen-list)
 
@@ -114,12 +147,17 @@ that building with no screen**.
 That second list is the useful half. It answers "what have we not covered yet"
 rather than "what have we covered".
 
+Screens placed in the building with no room are listed first, with **No
+room** in the Room column. They don't count as covering any room, so they never
+take a room off the second list.
+
 ![Every screen in one building](screenshot:estate-building-screens)
 
 Both halves are scoped to your team, which is why the heading says "no screen
 **you can see**" — a room listed there may well hold another team's display. If
 your account is limited to particular locations, both halves also cover only
-your rooms, and a building outside your locations cannot be opened.
+your rooms, and a building outside your locations cannot be opened. Screens with
+no room appear only if you have access to the whole building.
 
 Rooms that are not open today carry an **Inactive** badge in both halves.
 They are still listed: a room that opens next month may be waiting for its
@@ -161,16 +199,16 @@ source — ask whoever administers this system to raise it.
 
 **A building is missing from the filter.** It has no screens you can see in it,
 or a campus is selected and the building is on a different one — set
-**Campus** back to **All**. Otherwise, set a room on a screen there and it
-appears.
+**Campus** back to **All**. Otherwise, place a screen in it and it appears.
 
 **A room is missing from the picker.** First check the **Building** box: the
 **Room** box only lists rooms in the building chosen there. If your account is
 limited to particular locations, the room may be outside them. Otherwise, either
 the overnight refresh has not run since the room was added to the University
 record, or it is not in that record at all. An administrator can trigger a refresh from **Estate directory → Estate
-rooms**. If the room genuinely isn't catalogued, leave **Room** blank — that is
-a supported state.
+rooms**. If the room genuinely isn't catalogued, choose the building and leave
+**Room** blank — that is a supported state. See
+[A screen in a building but not in a room](#a-screen-in-a-building-but-not-in-a-room).
 
 **A screen's room says "Missing"** on the room record. The University has stopped
 publishing that room — usually a decommission or a renumbering. The screen keeps

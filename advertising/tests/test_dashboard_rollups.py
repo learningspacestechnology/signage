@@ -119,14 +119,24 @@ class DashboardRollupTests(TestCase):
         self._screen("unplaced", "10.0.0.2", self.team_a)
 
         context = self._dashboard().context
-        self.assertEqual(context['screens_without_room'], 1)
+        self.assertEqual(context['screens_without_location'], 1)
         self.assertEqual(sum(r['total'] for r in context['screens_by_building']), 1)
+
+    def test_a_screen_in_a_building_with_no_room_counts_in_the_building(self):
+        """Placed deliberately — a foyer — so not part of the backlog line."""
+        foyer = self._screen("foyer", "10.0.0.1", self.team_a)
+        Screen.objects.filter(pk=foyer.pk).update(building=self.appleton)
+
+        context = self._dashboard().context
+        self.assertEqual(context['screens_without_location'], 0)
+        [row] = context['screens_by_building']
+        self.assertEqual((row['name'], row['total']), ("Appleton Tower", 1))
 
     def test_the_unassigned_link_uses_the_filter_parameter_that_exists(self):
         self._screen("a1", "10.0.0.1", self.team_a, self._room("r1", self.appleton))
         self._screen("unplaced", "10.0.0.2", self.team_a)
 
-        url = self._dashboard().context['screens_without_room_url']
+        url = self._dashboard().context['screens_without_location_url']
         self.assertTrue(url.endswith("?room_set=no"))
 
         resp = self.client_a.get(url)

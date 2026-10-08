@@ -75,9 +75,10 @@ class LocationTestCase(TestCase):
         self.rita = self._staff("rita")
         self.super = User.objects.create_superuser('root', 'r@x', 'pw')
 
-    def _screen(self, name, ip, room):
+    def _screen(self, name, ip, room, building=None):
         screen = Screen.objects.create(
-            name=name, ip=ip, schedule=self.schedule, room=room)
+            name=name, ip=ip, schedule=self.schedule, room=room,
+            building=building)
         screen.teams.add(self.team)
         return screen
 
@@ -157,6 +158,30 @@ class ResolutionTests(LocationTestCase):
     def test_a_screen_with_no_room_is_hidden_from_a_restricted_user(self):
         self._group("Central", members=[self.rita], campuses=[self.central])
         self.assertNotIn(self.roomless, self._visible(Screen))
+
+    def test_a_building_grant_covers_a_screen_in_it_with_no_room(self):
+        foyer = self._screen("at-foyer", "10.0.1.1", None, building=self.at)
+        self._group("AT", members=[self.rita], buildings=[self.at])
+        self.assertIn(foyer, self._visible(Screen))
+
+    def test_a_campus_grant_covers_one_too(self):
+        foyer = self._screen("at-foyer", "10.0.1.1", None, building=self.at)
+        self._group("Central", members=[self.rita], campuses=[self.central])
+        self.assertIn(foyer, self._visible(Screen))
+
+    def test_a_room_grant_in_the_building_does_not(self):
+        """LT2 is not the foyer, though both are in Appleton Tower."""
+        foyer = self._screen("at-foyer", "10.0.1.1", None, building=self.at)
+        self._group("LT2 only", members=[self.rita], rooms=[self.lt2])
+        self.assertNotIn(foyer, self._visible(Screen))
+        self.assertIn(self.at, self._visible(Building))
+
+    def test_a_screen_with_a_room_answers_to_the_room_not_the_building(self):
+        """A building column gone stale must not widen access."""
+        screen = self.screens["jcmb-1501"]
+        Screen.objects.filter(pk=screen.pk).update(building=self.at)
+        self._group("AT", members=[self.rita], buildings=[self.at])
+        self.assertNotIn(screen, self._visible(Screen))
 
     def test_a_superuser_sees_everything(self):
         self.assertIs(visible_room_ids(_Request(self.super)), ALL_LOCATIONS)
@@ -281,7 +306,7 @@ class ScreenAdminTests(LocationTestCase):
 
     def test_the_no_room_filter_option_is_not_offered(self):
         resp = self._client().get(reverse('admin:screens_screen_changelist'))
-        self.assertNotContains(resp, "No room set")
+        self.assertNotContains(resp, "No location set")
 
     def test_the_building_box_offers_only_visible_buildings(self):
         resp = self._client().get(self.change_url)
@@ -319,10 +344,38 @@ class ScreenAdminTests(LocationTestCase):
         self.lt2_screen.refresh_from_db()
         self.assertEqual(self.lt2_screen.room, self.lt2)
 
-    def test_a_restricted_user_must_set_a_room(self):
+    def test_a_restricted_user_must_set_a_building(self):
         resp = self._post(self._client(), building='', room='')
         self.assertEqual(resp.status_code, 200)
-        self.assertIn('room', resp.context['adminform'].form.errors)
+        self.assertIn('building', resp.context['adminform'].form.errors)
+
+    def test_a_building_granted_whole_may_hold_a_screen_with_no_room(self):
+        resp = self._post(self._client(), building=str(self.at.pk), room='')
+        self.assertEqual(resp.status_code, 302)
+        self.lt2_screen.refresh_from_db()
+        self.assertIsNone(self.lt2_screen.room)
+        self.assertEqual(self.lt2_screen.building, self.at)
+
+    def test_a_building_seen_through_one_room_needs_a_room(self):
+        """The Building box offers it, but the screen would vanish on save."""
+        una = self._staff("una")
+        self._group("LT2 only", members=[una], rooms=[self.lt2])
+        resp = self._post(self._client(una), building=str(self.at.pk), room='')
+        self.assertEqual(resp.status_code, 200)
+        self.assertFormError(
+            resp.context['adminform'].form, 'room',
+            "Choose a room. Your locations include rooms in Appleton Tower but "
+            "not the whole building, so a screen with no room there would "
+            "disappear from your list.")
+        self.lt2_screen.refresh_from_db()
+        self.assertEqual(self.lt2_screen.room, self.lt2)
+
+    def test_the_rule_is_not_left_on_the_form_for_the_next_user(self):
+        self._client().get(self.change_url)
+        resp = self._client(self.super).get(self.change_url)
+        form = resp.context['adminform'].form
+        self.assertIsNone(form.wholly_visible_buildings)
+        self.assertFalse(form.fields['building'].required)
 
     def test_an_unrestricted_user_may_still_leave_the_room_blank(self):
         # A superuser across all teams must name one; see TeamScopedAdminMixin.
@@ -331,6 +384,7 @@ class ScreenAdminTests(LocationTestCase):
         self.assertEqual(resp.status_code, 302)
         self.lt2_screen.refresh_from_db()
         self.assertIsNone(self.lt2_screen.room)
+        self.assertIsNone(self.lt2_screen.building)
 
 
 class BuildingPageTests(LocationTestCase):
