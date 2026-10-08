@@ -484,6 +484,13 @@ buildings before `_sync_rooms`, then after the sweep add the new building to the
 building merged into an existing larger one does not silently widen access. Campuses need the
 same treatment, since a campus rename re-keys every building on it.
 
+The same rename strands a **screen placed in a building with no room** (`Screen.building` set,
+`room` null). A screen *with* a room follows it — `estate.sync._realign_screens` — but a
+building-only screen has nothing to follow, so it keeps the old building, which is flagged
+`missing_from_source` and kept because the screen references it. Nothing surfaces this beyond
+the building's own Missing flag. The carry-over above would cover it with the same snapshot,
+under the same "only if created in this run" rule.
+
 **No `ENTRA_DEFAULT_LOCATION_GROUP_NAME`.** Sites with `ENTRA_AUTO_GRANT_IS_STAFF` and
 `ENTRA_DEFAULT_TEAM_NAME` set now create users who see content but no screens until assigned
 location access. Documented in the help pages; adding the setting follows the three-place rule

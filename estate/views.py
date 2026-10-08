@@ -11,6 +11,7 @@ from itertools import groupby
 
 from django.contrib import admin, messages
 from django.core.exceptions import PermissionDenied
+from django.db.models import F
 from django.shortcuts import get_object_or_404, redirect
 from django.template.response import TemplateResponse
 from django.urls import reverse
@@ -58,12 +59,13 @@ def building_screens_view(request, building_id):
     # Scoped first, then annotated — the same layering as
     # ScreenAdmin.get_queryset, so this page's badge and the changelist's can
     # never disagree about a screen's status.
+    # Includes screens in the building with no room, which sort first.
     screens = (
         scope_screens(Screen.objects.all(), request)
-        .filter(room__building=building)
+        .filter(building=building)
         .with_status()
         .select_related('room')
-        .order_by('room__name', 'name')
+        .order_by(F('room__name').asc(nulls_first=True), 'name')
     )
     screens = list(screens)
 
@@ -80,7 +82,7 @@ def building_screens_view(request, building_id):
 
     changelist = (
         f"{reverse('admin:screens_screen_changelist')}"
-        f"?room__building__id__exact={building.pk}"
+        f"?building__id__exact={building.pk}"
     )
 
     context = {

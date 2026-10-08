@@ -117,7 +117,11 @@ The practical consequences:
 - **A building is renamed upstream.** It is treated as a new building, and the
   old one disappears once nothing is left in it. **Screens keep their rooms**
   either way: rooms are matched on the datastore's own room id, so only the
-  building record changes underneath them.
+  building record changes underneath them, and each screen's building follows
+  its room in the same refresh. The exception is a screen placed in the
+  building **with no room**: it has nothing to follow, so it stays on the old
+  building, which is kept and marked **Missing**. Move such screens to the new
+  building by hand.
 - **A room moves to a different building.** It is simply re-pointed, keeping
   its record and any screen in it.
 - **Two buildings share a name on one campus.** They would be merged. That does
@@ -133,7 +137,8 @@ things happens:
 - **A screen, a display room or a location group points at it.** The record is
   kept and marked **Missing**, and the thing pointing at it is untouched.
 
-The same goes for a building or campus a location group grants. A grant on a
+The same goes for a building a screen is placed in, and for a building or
+campus a location group grants. A grant on a
 building that has been *renamed* upstream is kept but covers nothing, so it is
 flagged for review — see [Location access](help:location-access).
 

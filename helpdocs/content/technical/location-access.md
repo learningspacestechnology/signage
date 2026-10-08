@@ -29,9 +29,15 @@ For a user limited to location groups:
 - **Screens** — the list, its filters, the dashboard counts and the per-building
   pages show only screens in their rooms. This is on top of teams: they see a
   screen only if it is in their active team **and** in one of their rooms.
-- **Screens with no room** are hidden from them, because no grant can cover
-  one. For the same reason, the **Room** field on a screen is **required** for
-  them, and the **No room set** filter option is not offered.
+- **Screens in a building with no room** (a foyer, say) are visible to them
+  only through a **building or campus grant**. A room grant reveals its
+  building but covers only that room, so it does not reach a screen in the
+  building as a whole. On the screen form, they may leave **Room** blank only in
+  a building they hold outright; otherwise the form asks for a room.
+- **Screens with no location at all** are hidden from them, because no grant can
+  cover one. For the same reason, the **Building** field on a screen is
+  **required** for them, and the **No location set** filter option is not
+  offered.
 - **Estate directory** — the campus, building and room lists, and the
   **Building** and **Room** boxes on a screen, offer only their places. Counts
   on those lists cover only what they can see.
@@ -157,7 +163,12 @@ individual rooms, not the building. Either grant the building or add the rooms.
 to a room outside their groups, or a building they were granted was renamed
 upstream (see above).
 
-**Someone cannot save a screen: the Room field is required.** They are limited
-to location groups, and a screen with no room would disappear from their list.
-Pick the room it is in; if it is not in a catalogued room, a user with **All
-locations** has to save it.
+**Someone cannot save a screen: "Choose a room".** They are limited to location
+groups that grant individual rooms in that building, not the building itself, so
+a screen there with no room would disappear from their list. Pick the room it is
+in. If it is not in a catalogued room, such as a foyer, either grant them the
+building or have someone who holds it save the screen.
+
+**Someone cannot save a screen: the Building field is required.** A screen with
+no location at all is outside every grant. A user with **All locations** has to
+save a screen whose whereabouts are not known yet.

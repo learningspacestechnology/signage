@@ -369,16 +369,16 @@ def dashboard_callback(request, context):
     # disagree about how many screens are dark in a building.
     buildings = {}
     for row in (screens_qs.with_status()
-                .filter(room__isnull=False)
-                .values("room__building_id", "room__building__name",
-                        "room__building__campus__name", "derived_status")
+                .filter(building__isnull=False)
+                .values("building_id", "building__name",
+                        "building__campus__name", "derived_status")
                 .annotate(n=Count("id", distinct=True))):  # distinct: see above
-        entry = buildings.setdefault(row["room__building_id"], {
-            "name": row["room__building__name"],
-            "campus": row["room__building__campus__name"],
+        entry = buildings.setdefault(row["building_id"], {
+            "name": row["building__name"],
+            "campus": row["building__campus__name"],
             "online": 0, "attention": 0, "offline": 0, "total": 0,
             "url": reverse("admin:estate_building_screens",
-                           args=[row["room__building_id"]]),
+                           args=[row["building_id"]]),
         })
         entry[row["derived_status"]] = row["n"]
         entry["total"] += row["n"]
@@ -420,15 +420,17 @@ def dashboard_callback(request, context):
 
         "attention_screens": attention_screens,
 
-        # Empty on a site with no room assignments, which is what keeps the
+        # Empty on a site with no screens placed, which is what keeps the
         # panel — and the whole estate feature — out of an unconfigured
         # dashboard rather than showing an empty box.
         "screens_by_building": screens_by_building,
         "screens_by_building_more": max(0, len(buildings) - BUILDINGS_SHOWN),
-        "screens_without_room": screens_qs.filter(room__isnull=True).count(),
+        # No building, so no room either: a screen in a building with no room
+        # is counted in that building's row above.
+        "screens_without_location": screens_qs.filter(building__isnull=True).count(),
         # ?room_set=no is RoomAssignedFilter's parameter — a stable name chosen
         # partly so this link could exist.
-        "screens_without_room_url":
+        "screens_without_location_url":
             reverse("admin:screens_screen_changelist") + "?room_set=no",
 
         # Content, playlists and schedules are not tied to a place, so a user

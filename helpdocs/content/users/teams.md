@@ -26,8 +26,10 @@ a place, so locations don't affect them.
 
 Three things follow if your account is limited to locations:
 
-- A screen must have a **Room**. One without a room would disappear from your
-  list as soon as you saved it, so the form won't let you leave it blank.
+- A screen must have a **Building**, and a **Room** too unless you have
+  access to the whole building. A screen outside your locations would disappear
+  from your list as soon as you saved it, so the form won't let you leave
+  them blank.
 - The **Building** and **Room** boxes on a screen offer only your places.
 - If you have no locations at all, the dashboard says so and your screen list is
   empty. Ask an administrator to add you to a location group.

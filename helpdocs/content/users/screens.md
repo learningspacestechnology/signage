@@ -132,21 +132,24 @@ and filter by:
   displays worth walking to.
 - **Campus** and **Building** — where the screen physically is. Like the
   schedule filter, only values actually in use by screens you can see are
-  offered, so these two do not appear at all until you have set rooms on
-  screens in more than one building. Choose a campus first and the
-  **Building** filter lists only that campus's buildings.
+  offered, so these two do not appear at all until you have placed screens in
+  more than one building. Choose a campus first and the **Building** filter
+  lists only that campus's buildings.
 - **Support type** — who the University's room record says looks after the
   screen's room. **Not recorded** finds screens in rooms with none set.
-- **Room** — **In a room**, **No room set** or **In an inactive room**. The
-  second is your commissioning backlog; the third is screens whose room the
-  University says is not open today. If your account is limited to particular
-  locations, you only ever see screens that have a room, so **No room set** is
-  not offered.
+- **Room** — **In a room**, **In a building, no room**, **No location set** or
+  **In an inactive room**. The second is screens in somewhere uncatalogued, such
+  as a foyer; the third is your commissioning backlog; the fourth is screens
+  whose room the University says is not open today. If your account is limited
+  to particular locations, you never see a screen with no location, so **No
+  location set** is not offered.
 
-The **Building** and **Room** columns show each screen's location; a dash means
-no room has been set, and an **Inactive** badge beside the room name means the
-room is not open today. See [Where a screen is](help:screen-locations) for setting
-one, and for the page listing every screen in a building.
+The **Building** and **Room** columns show each screen's location. A dash in
+**Room** alone means the screen is in the building but not in a catalogued room;
+a dash in both means it hasn't been placed. An **Inactive** badge beside the
+room name means the room is not open today. See
+[Where a screen is](help:screen-locations) for setting one, and for the page
+listing every screen in a building.
 
 You can also sort by the **Status** column. It sorts by how bad things are
 rather than alphabetically, so one click puts the healthy screens first and a

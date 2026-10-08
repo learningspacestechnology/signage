@@ -172,6 +172,27 @@ class ScreenFormTests(RoomPickerTestCase):
         self.assertEqual(resp.status_code, 302)
         self.screen.refresh_from_db()
         self.assertIsNone(self.screen.room)
+        self.assertIsNone(self.screen.building)
+
+    def test_a_building_with_no_room_is_kept(self):
+        """A foyer is rarely a catalogued room; the building alone must save."""
+        client = self._client()
+        resp = self._post(client, building=str(self.other_building.pk), room='')
+        self.assertEqual(resp.status_code, 302)
+        self.screen.refresh_from_db()
+        self.assertIsNone(self.screen.room)
+        self.assertEqual(self.screen.building, self.other_building)
+
+        form = client.get(self.change_url).context['adminform'].form
+        self.assertEqual(form['building'].value(), self.other_building.pk)
+
+    def test_a_room_with_no_building_takes_the_rooms_building(self):
+        """Only a crafted POST or a script failure, but the room decides."""
+        Screen.objects.filter(pk=self.screen.pk).update(room=None, building=None)
+        resp = self._post(self._client(), room=str(self.elsewhere.pk))
+        self.assertEqual(resp.status_code, 302)
+        self.screen.refresh_from_db()
+        self.assertEqual(self.screen.building, self.other_building)
 
     def test_unfolds_option_hover_rule_is_still_the_one_we_outrank(self):
         """building_picker.css un-highlights a hovered campus group by beating
@@ -188,8 +209,13 @@ class ScreenFormTests(RoomPickerTestCase):
              '.select2-results__option:where(.dark,.dark *):hover'})
 
     def test_a_view_only_user_can_still_open_the_screen(self):
-        """`building` has no model attribute to render read-only from."""
         resp = self._client(change=False).get(self.change_url)
         self.assertEqual(resp.status_code, 200)
         self.assertNotContains(resp, 'id_building')
         self.assertContains(resp, "1 George Square — 1.1")
+
+    def test_a_view_only_user_sees_a_building_with_no_room(self):
+        Screen.objects.filter(pk=self.screen.pk).update(room=None)
+        resp = self._client(change=False).get(self.change_url)
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "1 George Square")

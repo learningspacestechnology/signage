@@ -1,3 +1,4 @@
+from estate.models import Building
 from estate.picker import BuildingChoiceField, room_picker_label
 from screens.models import Playlist, Screen
 from django import forms
@@ -127,13 +128,22 @@ class SourceBulkCreateForm(PlaylistAssigningSourceForm):
 class ScreenAdminForm(ModelForm):
     """The screen form, with a Building box that narrows the Room picker.
 
-    ``building`` is not stored: a screen's building is its room's. It is here
-    only to choose from — see ``estate.picker`` for why the picker is split.
+    ``building`` is stored, so a screen can be placed in a building with no
+    room — most foyers are not catalogued. With a room it is the room's
+    building, which ``Screen.save`` enforces. The box is a grouped local select
+    rather than the default — see ``estate.picker`` for why the picker is split.
     """
 
     building = BuildingChoiceField(
         required=False,
-        help_text="Choose the building first; the Room box then lists only its rooms.")
+        help_text="Choose the building first; the Room box then lists only its "
+                  "rooms. Leave Room blank for a screen in the building but not "
+                  "in a catalogued room, such as a foyer.")
+
+    #: Set by ScreenAdmin.get_form for a location-restricted user: the
+    #: buildings they hold outright, the only ones a screen with no room may
+    #: be left in. None means unrestricted.
+    wholly_visible_buildings = None
 
     class Meta:
         model = Screen
@@ -143,8 +153,6 @@ class ScreenAdminForm(ModelForm):
         super().__init__(*args, **kwargs)
         if 'building' not in self.fields or 'room' not in self.fields:
             return
-        if self.instance.room_id and 'building' not in self.initial:
-            self.initial['building'] = self.instance.room.building_id
         room = self.fields['room']
         # Inside the admin's RelatedFieldWidgetWrapper, whose own `attrs` is the
         # *class-level* widget's dict: writing there would leak into every
@@ -163,4 +171,15 @@ class ScreenAdminForm(ModelForm):
         # would put the screen somewhere the operator did not choose.
         if building and room and room.building_id != building.pk:
             self.add_error('room', f"{room.name} is not in {building.name}.")
+        elif (building and not room
+              and self.wholly_visible_buildings is not None
+              and not Building.objects.filter(
+                  pk=building.pk, pk__in=self.wholly_visible_buildings).exists()):
+            # The building box offers every building the user can see, which
+            # includes one revealed by a single room grant. A screen left there
+            # with no room is outside their locations and would vanish.
+            self.add_error('room', (
+                f"Choose a room. Your locations include rooms in {building.name} "
+                "but not the whole building, so a screen with no room there "
+                "would disappear from your list."))
         return cleaned

@@ -142,6 +142,19 @@ class BuildingScreensPageTests(TestCase):
         resp = self.client_a.get(self._url())
         self.assertContains(resp, "Rooms with no screen you can see")
 
+    def test_a_screen_in_the_building_with_no_room_is_listed_first(self):
+        foyer = Screen.objects.create(
+            name="foyerScreen", ip="10.0.0.3", schedule=self.schedule,
+            building=self.building)
+        foyer.teams.add(self.team_a)
+        resp = self.client_a.get(self._url())
+        self.assertEqual([s.name for s in resp.context['screens']],
+                         ["foyerScreen", "alphaScreen"])
+        self.assertContains(resp, "No room")
+        # It occupies no room, so every dark room stays dark.
+        self.assertEqual(
+            {r.name for r in resp.context['dark_rooms']}, {"LT3", "Seminar 5"})
+
     def test_a_fully_covered_building_shows_no_dark_panel(self):
         Room.objects.filter(pk__in=[self.lt3.pk, self.dark.pk]).delete()
         resp = self.client_a.get(self._url())
@@ -170,7 +183,7 @@ class BuildingScreensPageTests(TestCase):
     def test_it_links_to_the_changelist_filtered_by_this_building(self):
         resp = self.client_a.get(self._url())
         self.assertContains(
-            resp, f"room__building__id__exact={self.building.pk}")
+            resp, f"building__id__exact={self.building.pk}")
 
     def test_the_changelist_link_actually_filters(self):
         """Not a given: Django drops a lookup for a filter that does not render."""
