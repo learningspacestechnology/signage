@@ -183,6 +183,38 @@ class ScreenListFilterTests(TestCase):
         self.assertEqual(admin_obj.show_status(bare), admin_obj.show_status(annotated))
         self.assertIn("Responds to ping", admin_obj.show_status_detail(bare))
 
+    # --- Default ordering ----------------------------------------------------
+
+    def _mixed_statuses(self):
+        """Alongside setUp's screenAlpha (online) and screenAlphaDark (offline).
+        "Kelvin" against "aardvark" is the case trap: SQLite would put the
+        capital first."""
+        self._screen("aardvark", "10.0.0.4", self.sched_a, self.team_a, online=True)
+        self._screen("Kelvin", "10.0.0.5", self.sched_a, self.team_a, online=True)
+        self._screen("zebraDark", "10.0.0.6", self.sched_a, self.team_a, online=False)
+        amber = self._screen("Middle", "10.0.0.7", self.sched_a, self.team_a, online=False)
+        Screen.objects.filter(pk=amber.pk).update(
+            last_ping_ok=timezone.now(), last_ping_attempt=timezone.now())
+
+    def test_the_list_opens_worst_first_then_a_to_z(self):
+        self._mixed_statuses()
+        self.assertEqual(
+            [s.name for s in self._rows(self._changelist())],
+            ["screenAlphaDark", "zebraDark",          # offline
+             "Middle",                                # needs attention
+             "aardvark", "Kelvin", "screenAlpha"])    # online
+
+    def test_a_clicked_column_wins_and_name_breaks_the_tie(self):
+        """Sorting by a column replaces the default rather than being ignored,
+        and the default still orders the rows that column leaves tied."""
+        self._mixed_statuses()
+        # Column 3 is Status: 0 is the action checkbox, then name and ip.
+        self.assertEqual(
+            [s.name for s in self._rows(self._changelist(o="3"))],
+            ["aardvark", "Kelvin", "screenAlpha",
+             "Middle",
+             "screenAlphaDark", "zebraDark"])
+
     def test_a_screen_that_missed_a_few_polls_is_still_online(self):
         """One late heartbeat is jitter, not a fault worth listing."""
         Screen.objects.filter(pk=self.screen_a.pk).update(

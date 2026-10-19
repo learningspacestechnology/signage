@@ -145,6 +145,11 @@ class ScreenAdminForm(ModelForm):
     #: be left in. None means unrestricted.
     wholly_visible_buildings = None
 
+    #: Set by ScreenAdmin.get_form: the screens this user can see, so an IP
+    #: clash names the other screen only when they could go and fix it. None
+    #: means unrestricted.
+    visible_screens = None
+
     class Meta:
         model = Screen
         fields = '__all__'
@@ -162,6 +167,28 @@ class ScreenAdminForm(ModelForm):
         # The option the page loads with; the rest come from the picker view,
         # which labels them the same way.
         room.label_from_instance = room_picker_label
+
+    def clean_ip(self):
+        ip = self.cleaned_data.get('ip')
+        # A device finds its screen by address and plays whichever match comes
+        # back first, so a second screen on the same IP silently takes over
+        # (or is ignored by) the device. Checked here only, not by the
+        # database -- see KNOWN_ISSUES.md for why there is no constraint yet.
+        # Against every screen, not just visible ones: the clash is real
+        # whichever team owns the other screen.
+        clash = Screen.objects.filter(ip=ip).exclude(pk=self.instance.pk).first()
+        if clash is None:
+            return ip
+        if (self.visible_screens is None
+                or self.visible_screens.filter(pk=clash.pk).exists()):
+            raise ValidationError(
+                f"The screen “{clash.name}” already uses this IP address. Each "
+                "device needs its own address, so correct this one, or change "
+                "or delete that screen first.")
+        raise ValidationError(
+            "Another screen already uses this IP address, outside your "
+            "current team or locations. Each device needs its own address — "
+            "ask an administrator to find the other screen.")
 
     def clean(self):
         cleaned = super().clean()

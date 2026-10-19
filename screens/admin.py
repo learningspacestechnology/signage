@@ -6,6 +6,7 @@ from django.conf import settings
 from django.urls import re_path
 from django.contrib import admin
 from django.core.exceptions import ValidationError
+from django.db.models.functions import Lower
 from django.template.loader import get_template
 from django.template.response import TemplateResponse
 from django.utils.timesince import timesince
@@ -699,8 +700,16 @@ class ScreenAdmin(TeamScopedAdminMixin, ModelAdmin):
         # Location-scoped on top of the mixin's team scoping. with_status() so
         # the badge, the detail column and the sort all read one annotation
         # rather than each screen recomputing its own.
-        return scope_to_locations(
-            super().get_queryset(request), request).with_status()
+        #
+        # Worst first, then A-Z, so the screens wanting someone are at the top.
+        # Here rather than in `ordering`, which the admin checks refuse for an
+        # annotation (admin.E033) -- and which ModelAdmin.get_queryset would
+        # apply before with_status() had added it. The changelist falls back to
+        # this when no column is clicked, and keeps it as the tie-break when one
+        # is. Lower() because SQLite sorts capitals first and MySQL does not.
+        return (scope_to_locations(super().get_queryset(request), request)
+                .with_status()
+                .order_by("-status_rank", Lower("name")))
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == 'room':
@@ -722,6 +731,8 @@ class ScreenAdmin(TeamScopedAdminMixin, ModelAdmin):
 
     def get_form(self, request, obj=None, **kwargs):
         form_class = super().get_form(request, obj, **kwargs)
+        # Lazy, so it costs nothing unless an IP clash needs naming.
+        form_class.visible_screens = scope_screens(Screen.objects.all(), request)
         if 'building' in form_class.base_fields and not sees_all_locations(request):
             # Copy first, as SourceDisplay.get_form does: the declared field is
             # shared by every form class the factory builds.
