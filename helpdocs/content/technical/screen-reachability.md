@@ -18,16 +18,26 @@ heartbeat is the other half of the picture.
 |---|---|---|
 | **Online** | Polled within the last {{ config.SCREEN_OFFLINE_AFTER }} | Nothing to do |
 | **Needs attention** | Not polling, but answers ping | The device is up, its software isn't |
-| **Needs attention** | Stopped polling under {{ config.SCREEN_ATTENTION_AFTER }} ago | Probably a blip; look again |
 | **Offline** | Everything else | Power, network, or the wrong IP registered |
 
-The two amber cases share a colour but not a meaning, so the reason is always
-shown next to it — in the **Detail** column on the screens list, and on the
+Players poll once a minute, so the online window absorbs a few late or dropped
+polls. There is no amber "grace" state for a screen that has merely gone quiet:
+amber means a ping has shown the device is alive, and nothing else.
+
+The two offline reasons mean different things, so the reason is always shown
+next to the badge — in the **Detail** column on the screens list, and on the
 dashboard watchlist. Never diagnose from the colour alone.
 
-**Ping outranks the grace window.** A screen that both answers ping and stopped
-reporting two minutes ago is reported as "responds to ping", because that is the
-more useful of the two facts.
+**A ping only counts if it is newer than the last check-in.** A probe result left
+over from an earlier outage says nothing about this one, so until the screen has
+been probed during the current silence it reads plain "no contact".
+
+**Probing starts before the online window ends.** A screen becomes a probe
+target once it has been silent for {{ config.SCREEN_PROBE_AFTER }}, while it
+still reads online, so a reachable screen usually goes straight from green to
+amber. The check runs only {{ config.SCREEN_CHECK_SCHEDULE }}, so a screen that
+goes quiet just after a check can read "no contact" for a minute or two before
+the next one reaches it.
 
 A successful ping keeps a screen amber for {{ config.SCREEN_PING_WINDOW }} —
 deliberately longer than the {{ config.SCREEN_CHECK_SCHEDULE }} check interval,
@@ -80,8 +90,9 @@ trying to change them from here.
 - **It never writes `last seen`.** The two signals are stored separately and
   combined only when the status is worked out. A ping cannot make a screen look
   like it is reporting when it isn't.
-- **It only probes screens that aren't reporting.** A screen that is polling has
-  already answered the more useful question, so probing it would be traffic for
+- **It only probes screens that aren't reporting** — those silent for
+  {{ config.SCREEN_PROBE_AFTER }} or more. A screen that is polling has already
+  answered the more useful question, so probing it would be traffic for
   nothing.
 - **It never restarts a display.** A screen whose rotation is running is left
   alone entirely; the check writes only the two reachability timestamps.
@@ -95,8 +106,8 @@ The two offline reasons look similar and mean opposite things:
 
 | Reason | Meaning |
 |---|---|
-| **No contact and no ping response** | The system asked. Nothing came back. Probing is working; the device really is unreachable. |
-| **No contact** | Nothing asked. Says nothing about the device. |
+| **No contact and no ping response** | The system asked since the screen went quiet. Nothing came back. Probing is working; the device really is unreachable. |
+| **No contact** | Nothing has asked since the screen went quiet. Says nothing about the device. |
 
 So an estate where *every* screen says plain "no contact" and none say "needs
 attention" is telling you about the checker, not the screens — one of the three

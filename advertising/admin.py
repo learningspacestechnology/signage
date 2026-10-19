@@ -11,6 +11,8 @@ from django.db.models import (BooleanField, Count, Exists, ExpressionWrapper,
 from django.http import HttpResponseBadRequest, HttpResponseRedirect
 from django.templatetags.static import static
 from django.urls import path, reverse
+from django.utils import timezone
+from django.utils.formats import date_format
 from django.views.decorators.http import require_POST
 from unfold.admin import ModelAdmin, TabularInline
 from unfold.decorators import display
@@ -307,6 +309,7 @@ def dashboard_callback(request, context):
     from estate.models.access import stale_grants_q
     from screens.models import (
         Playlist, Schedule, Screen, ScreenStatus, Source, StatusReason)
+    from screens import account_inactivity
     from screens.team_scope import scope_to_active_team
 
     screens_qs = scope_screens(Screen.objects.all(), request)
@@ -445,6 +448,16 @@ def dashboard_callback(request, context):
         "location_groups_review_url":
             reverse("admin:estate_locationgroup_changelist") + "?needs_review=1",
 
+        # Whoever can edit users can act on it: reactivate an account, or add it
+        # to the exemption group. There is no email, so this is the only warning.
+        "accounts_upcoming": (
+            account_inactivity.upcoming(timezone.now()).count()
+            if account_inactivity.enabled() and request.user.has_perm("auth.change_user")
+            else 0),
+        "accounts_warning_days": account_inactivity.WARNING_DAYS,
+        "accounts_upcoming_url":
+            reverse("admin:auth_user_changelist") + "?inactivity=upcoming",
+
         "can_add_source": request.user.has_perm("screens.add_source"),
         "can_add_playlist": request.user.has_perm("screens.add_playlist"),
         "bulk_upload_url": reverse("admin:screens_source_bulk_create"),
@@ -547,6 +560,39 @@ class LocationAccessFilter(admin.SimpleListFilter):
         return queryset
 
 
+class InactivityFilter(admin.SimpleListFilter):
+    """Users by where they stand under the inactivity rule.
+
+    `upcoming` is the dashboard notice's link target, so keep the value stable.
+    Relies on the `last_activity` / `deactivated_at` annotations that
+    UserAdmin.get_queryset adds.
+    """
+
+    title = "inactivity"
+    parameter_name = "inactivity"
+
+    def lookups(self, request, model_admin):
+        from screens import account_inactivity as rule
+
+        if not rule.enabled():
+            return ()
+        return (("upcoming", f"Deactivated or deleted within {rule.WARNING_DAYS} days"),
+                ("pending", "Deactivated, awaiting deletion"),
+                ("exempt", "Exempt"))
+
+    def queryset(self, request, queryset):
+        from screens import account_inactivity as rule
+
+        if self.value() == "upcoming":
+            return queryset.filter(rule.upcoming_q(timezone.now())).exclude(rule.exempt_q())
+        if self.value() == "pending":
+            return (queryset.filter(is_active=False, deactivated_at__isnull=False)
+                    .exclude(rule.exempt_q()))
+        if self.value() == "exempt":
+            return queryset.filter(rule.exempt_q())
+        return queryset
+
+
 class UserLocationGroupInline(TabularInline):
     """This user's location groups, on their change page. Superusers only."""
 
@@ -586,11 +632,12 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
         "show_teams",
         "show_locations",
         "is_staff",
+        "show_inactivity",
     )
     # `teams` is the reverse side of Team.members, so the filter also offers the
     # "no team" case (see TeamListFilter).
     list_filter = BaseUserAdmin.list_filter + (
-        ("teams", TeamListFilter), LocationAccessFilter)
+        ("teams", TeamListFilter), LocationAccessFilter, InactivityFilter)
     add_fieldsets = (
         (
             None,
@@ -616,13 +663,27 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
     )
 
     def get_queryset(self, request):
-        # show_teams and show_locations walk every row's teams and location
-        # groups; without the prefetch and the annotation the changelist runs
-        # queries per user.
-        return (super().get_queryset(request)
+        # show_teams, show_locations and show_inactivity walk every row's
+        # teams, location groups and lifecycle; without the prefetch and the
+        # annotations the changelist runs queries per user.
+        from screens import account_inactivity
+
+        return (account_inactivity.with_last_activity(super().get_queryset(request))
                 .prefetch_related("teams", "location_groups")
-                .annotate(sees_all_locations=ExpressionWrapper(
-                    _all_locations_q(), output_field=BooleanField())))
+                .annotate(
+                    sees_all_locations=ExpressionWrapper(
+                        _all_locations_q(), output_field=BooleanField()),
+                    inactivity_exempt=ExpressionWrapper(
+                        account_inactivity.exempt_q(), output_field=BooleanField()),
+                ))
+
+    def get_list_display(self, request):
+        from screens import account_inactivity
+
+        list_display = super().get_list_display(request)
+        if not account_inactivity.enabled():
+            list_display = tuple(f for f in list_display if f != "show_inactivity")
+        return list_display
 
     def get_inlines(self, request, obj):
         inlines = list(super().get_inlines(request, obj))
@@ -643,6 +704,16 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
         if obj.sees_all_locations:
             return "All locations"
         return ", ".join(g.name for g in obj.location_groups.all()) or "No access"
+
+    @display(description="Inactivity", ordering="last_activity")
+    def show_inactivity(self, obj):
+        """The next thing the inactivity job will do to this account."""
+        from screens import account_inactivity
+
+        if obj.inactivity_exempt:
+            return "Exempt"
+        verb, when = account_inactivity.next_event(obj, timezone.now())
+        return f"{verb} {date_format(timezone.localtime(when), 'j M Y')}"
 
     def get_fieldsets(self, request, obj=None):
         fieldsets = super().get_fieldsets(request, obj)

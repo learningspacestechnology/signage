@@ -34,8 +34,8 @@ schedule.
 | `/meta`, `/api/meta` | Current state for the calling device |
 | `/api/meta/<id>` | Current state for one specific screen |
 
-This is the most important endpoint to understand. Devices poll it every few
-seconds, and it returns the playlist currently in force and when that playlist
+This is the most important endpoint to understand. Devices poll it once a
+minute, and it returns the playlist currently in force and when that playlist
 was last changed. The device compares that timestamp with what it already has and
 reloads only when something has actually changed.
 
@@ -54,7 +54,8 @@ first item. Polling itself does not: writing `last seen` is deliberately kept
 off this timestamp, or every display would restart once a minute.
 
 **Polling this is what sets `last seen`.** A screen is **Online** if it has
-polled within the last {{ config.SCREEN_OFFLINE_AFTER }}. Nothing else updates
+polled within the last {{ config.SCREEN_OFFLINE_AFTER }} — several polls' worth,
+so one that arrives late or is lost changes nothing. Nothing else updates
 that timestamp — not the screen page, not `/api/screen`, not `/playlist/<id>`.
 Only the heartbeat.
 
@@ -104,13 +105,12 @@ So there is a second, entirely independent signal: the system pings screens that
 have stopped reporting. The two together give the three states in the admin, and
 the gap between them is the diagnosis.
 
-| `last seen` | Ping | Status | Reading |
+| `last seen` | Ping since then | Status | Reading |
 |---|---|---|---|
-| Recent | not asked | **Online** | Nothing to do |
-| Stale | answers | **Needs attention** | Box is alive, its software isn't |
-| Stale, but only just | not asked | **Needs attention** | Missed a poll; wait and look again |
-| Stale | no answer | **Offline** | Device or network |
-| Stale | not asked | **Offline** | Probing is off, so nothing distinguishes the two above |
+| Within {{ config.SCREEN_OFFLINE_AFTER }} | — | **Online** | Nothing to do |
+| Older | answers | **Needs attention** | Box is alive, its software isn't |
+| Older | no answer | **Offline** | Device or network |
+| Older | not asked yet | **Offline** | Probing is off or hasn't reached it, so nothing distinguishes the two above |
 
 Reachability is described in full on
 [Screen reachability checks](help:screen-reachability). The important thing here

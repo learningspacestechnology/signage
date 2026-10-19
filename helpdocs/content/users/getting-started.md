@@ -19,12 +19,13 @@ You land on the **Overview Dashboard**, which summarises your screens, content,
 playlists and schedules. See [Reading the dashboard](help:dashboard) for what each
 panel means.
 
-### Signing in with a password instead
+{% if config.PASSWORD_LOGIN_AVAILABLE %}### Signing in with a password instead
 
 Some accounts — usually service or test accounts — have their own password. On
 the sign-in page choose **Sign in with a password instead**, then enter your
 username and password. If a password sign-in has just failed, this form is shown
 straight away so you can try again.
+{% endif %}
 
 ## Finding your way around
 
@@ -83,10 +84,11 @@ readability — pick whichever you find easiest on the eye.
 
 - **Sign out** using the menu at the bottom of the left-hand sidebar. You'll get
   a confirmation page with a link to sign in again.
-- **Change your password** from the same menu, under **Change password**. This
+{% if config.PASSWORD_LOGIN_AVAILABLE %}- **Change your password** from the same menu, under **Change password**. This
   only applies to accounts that sign in with a password — if you use
   **Sign in with Microsoft**, your password is managed by your organisation and
   this page won't help you.
+{% endif %}
 
 ## When you can't get in
 
@@ -109,7 +111,17 @@ nothing for you to manage.
 If you're not sure which team you need, tell them which screens or buildings you
 look after.
 
-### Nobody has set my account up yet
+{% if config.ACCOUNT_INACTIVITY_DAYS %}### "Not permitted to sign in" after a long break
+
+Accounts nobody signs in to for {{ config.ACCOUNT_INACTIVITY_DAYS }} days are switched off
+automatically, and deleted {{ config.ACCOUNT_DELETION_GRACE_DAYS }} days after that. If your sign-in
+is refused after a long time away, ask your administrator to reactivate your
+account. They can until it's deleted; after that, signing in gives you a new,
+empty account that has to be set up again.
+
+Signing in at least once every {{ config.ACCOUNT_INACTIVITY_DAYS }} days avoids this.
+
+{% endif %}### Nobody has set my account up yet
 
 Ask your administrator to create an account for you. They'll need your work email
 address, and to know which team you should belong to.

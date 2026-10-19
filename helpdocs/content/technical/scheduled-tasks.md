@@ -17,12 +17,19 @@ job" apart from "actually broken".
 | Sync estate | {{ config.ESTATE_SYNC_SCHEDULE }} | Mirrors the University's campus, building and room record so screens can be assigned to rooms |
 | Check screens | {{ config.SCREEN_CHECK_SCHEDULE }} | Pings screens that have stopped reporting, and records status changes |
 | Clean up status history | daily at 03:30 | Deletes screen status changes older than {{ config.SCREEN_HISTORY_DAYS }} days |
+| Remove inactive accounts | {{ config.ACCOUNT_CHECK_SCHEDULE }} | {% if config.ACCOUNT_INACTIVITY_DAYS %}Deactivates accounts unused for {{ config.ACCOUNT_INACTIVITY_DAYS }} days, and deletes those deactivated more than {{ config.ACCOUNT_DELETION_GRACE_DAYS }} days ago{% else %}Switched off on this deployment; does nothing{% endif %} |
 
 !!! warning "Expiry deletes, it doesn't hide"
     The content cleanup job removes the record **and the uploaded file**. There is
     no undo and no recycle bin. Anyone relying on **Expires at** for seasonal
     content should be told to clear the date instead of letting it pass.
-
+{% if config.ACCOUNT_INACTIVITY_DAYS %}
+!!! warning "Inactive accounts are deleted, not archived"
+    The inactive-accounts job deletes the user record, with its memberships and
+    its change history. Accounts that must survive a long idle spell — the
+    emergency password account, service accounts — belong in the **Exempt from
+    inactivity removal** group. See [Users and teams](help:users-and-teams).
+{% endif %}
 ## Where to look
 
 **Periodic Tasks** lists what is scheduled and lets you change it. **Task

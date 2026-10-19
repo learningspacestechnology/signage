@@ -84,7 +84,7 @@ Consequences to remember:
 - A bare `os.getenv("KEY")` (no default) returns `None` when absent — currently `SECRET_KEY` and `HOSTNAME` behave this way (missing `SECRET_KEY` fails startup; missing `HOSTNAME` leaves `ALLOWED_HOSTS=[None, '127.0.0.1']`).
 - After bumping `base_settings.py`, the deploy submodule pointer must be advanced to a commit containing the change before the deploy override can rely on it.
 
-Key env-driven settings (read in the deploy `settings.py`): `O365_CLIENT_ID`, `O365_TENANT_ID`, `O365_CLIENT_SECRET`, `AUTO_MAKE_SCREENS_FOR_NEW_IPS`, `ADMIN_SITE_NAME`, `ENTRA_*`, `CELERY_BROKER_URL`/`CELERY_RESULT_BACKEND`, `LSD_API_KEY`/`LSD_API_BASE_URL`/`LSD_SYNC_*`.
+Key env-driven settings (read in the deploy `settings.py`): `O365_CLIENT_ID`, `O365_TENANT_ID`, `O365_CLIENT_SECRET`, `AUTO_MAKE_SCREENS_FOR_NEW_IPS`, `ADMIN_SITE_NAME`, `ENTRA_*`, `PASSWORD_LOGIN_ENABLED`, `ACCOUNT_INACTIVITY_DAYS`/`ACCOUNT_DELETION_GRACE_DAYS`, `CELERY_BROKER_URL`/`CELERY_RESULT_BACKEND`, `LSD_API_KEY`/`LSD_API_BASE_URL`/`LSD_SYNC_*`.
 
 **`advertising/settings.py` is untracked and ignored.** It routinely holds real credentials, so only `advertising/settings.sample.py` is committed. Consequences:
 

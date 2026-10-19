@@ -16,7 +16,7 @@ do too much".
 
 | Flag | Effect |
 |---|---|
-| **Active** | Off means the account cannot sign in at all. This is how you offboard someone. |
+| **Active** | Off means the account cannot sign in at all. This is how you offboard someone.{% if config.ACCOUNT_INACTIVITY_DAYS %} Also switched off automatically after {{ config.ACCOUNT_INACTIVITY_DAYS }} days unused — see [Users and teams](help:users-and-teams).{% endif %} |
 | **Staff status** | Required to reach the interface at all. Everyone who uses {{ config.ADMIN_SITE_NAME }} has it. |
 | **Superuser status** | Bypasses every permission check, sees every team and every location, and can manage teams and location groups. Grant sparingly. |
 

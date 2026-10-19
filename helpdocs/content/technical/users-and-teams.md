@@ -27,7 +27,10 @@ correctly scoped the first time the person signs in with Microsoft.
    See [Location access](help:location-access).
 7. **Leave the password blank.** A blank password means the account can only be
    used through Microsoft sign-in, which is what you want. Only set one for a
-   service or test account that must sign in with a password.
+   service or test account that must sign in with a password.{% if not config.PASSWORD_LOGIN_AVAILABLE %}
+   Password sign-in is switched off on this deployment, so a password set here
+   won't work until it's switched back on — see
+   [Password sign-in](help:sso-and-entra).{% endif %}
 8. Save.
 
 ![Pre-provisioning a user](screenshot:user-add)
@@ -82,7 +85,9 @@ sign in, they just arrive at an empty interface.
 ## Changing someone's password
 
 Only relevant for password accounts. Open the user, and use the password change
-link on the form. Microsoft accounts have no password here to change.
+link on the form. Microsoft accounts have no password here to change.{% if not config.PASSWORD_LOGIN_AVAILABLE %}
+While password sign-in is switched off on this deployment, a changed password
+won't work until it's switched back on.{% endif %}
 
 ## Removing access
 
@@ -90,12 +95,60 @@ link on the form. Microsoft accounts have no password here to change.
 while their history and the record of what they created stay intact.
 
 Do not delete the user. Deleting loses the audit trail, and the "created by"
-attribution on their content.
+attribution on their content.{% if config.ACCOUNT_INACTIVITY_DAYS %} A deactivated account is still deleted
+automatically once nobody has used it for {{ config.ACCOUNT_INACTIVITY_DAYS }} days —
+see **Inactive accounts** below. To keep its history for good, add it to the
+**Exempt from inactivity removal** group.{% endif %}
 
 If they're changing role rather than leaving, remove them from the team instead:
 open the team and delete their membership row. Location groups work the same
 way: remove the member row on the group, or on the user's own page.
 
+## Inactive accounts
+
+{% if config.ACCOUNT_INACTIVITY_DAYS %}An account nobody has used for **{{ config.ACCOUNT_INACTIVITY_DAYS }} days** is
+deactivated automatically, then deleted **{{ config.ACCOUNT_DELETION_GRACE_DAYS }} days** after that.
+The check runs {{ config.ACCOUNT_CHECK_SCHEDULE }}.
+
+**What counts as use.** Signing in by either route, or having a session still
+open — someone who stays signed in and works every day is not caught out by
+rarely seeing the sign-in page. An account nobody has ever signed in to counts
+from when it was created, so a pre-provisioned account the person never takes up
+goes the same way, as do the empty accounts a refused Microsoft sign-in leaves
+behind.
+
+**Superusers are included** — an unused superuser account is exactly the kind
+worth removing. The one exception: the check never deactivates the last active
+superuser, so someone can always manage users.
+
+**Seeing what's coming.** The **Inactivity** column on **Users** shows what will
+happen to each account next, and when. Filter by **inactivity** to list accounts
+due in the next 30 days, or deactivated and awaiting deletion. Anyone who can
+edit users also gets a notice on the dashboard while something is due within 30
+days. Nobody is emailed — the dashboard notice is the only warning.
+
+### Keeping an account
+
+Add it to the **Exempt from inactivity removal** group. Use this for accounts
+that are meant to sit unused: the password account kept for when Microsoft
+sign-in breaks (see [Password sign-in](help:sso-and-entra)), and service
+accounts. The Inactivity column shows them as **Exempt**.
+
+### Undoing a deactivation
+
+Until the account is deleted, open it and tick **Active**. That restarts the
+clock, giving the person another {{ config.ACCOUNT_INACTIVITY_DAYS }} days. Adding a deactivated
+account to the exempt group stops it being deleted, but it stays deactivated
+until you tick **Active**.
+
+### After deletion
+
+Deletion is permanent. The account goes, along with its team and location
+memberships and its entries in the change history. Content the person created
+stays, without a "created by". If they sign in with Microsoft afterwards, a new
+account is created with no access — set it up as you would for anyone new.
+{% else %}Automatic removal of unused accounts is switched off on this deployment.
+{% endif %}
 ## Managing teams
 
 Teams are superuser-only, and hidden from everyone else.

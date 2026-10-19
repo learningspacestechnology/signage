@@ -61,6 +61,15 @@ ENTRA_AUTH_ENABLED = False
 # ENTRA_AUTHORITY = f'https://login.microsoftonline.com/{ENTRA_TENANT_ID}'
 # ENTRA_REDIRECT_URI = 'http://localhost:8000/admin/oauth/entra/callback/'
 # ENTRA_ALLOWED_DOMAINS = ''
+# False removes the password form, leaving Microsoft as the only way in. Has no
+# effect while ENTRA_AUTH_ENABLED is False or ENTRA_CLIENT_ID is blank.
+# PASSWORD_LOGIN_ENABLED = True
+
+# Accounts unused for ACCOUNT_INACTIVITY_DAYS are deactivated, then deleted
+# ACCOUNT_DELETION_GRACE_DAYS later (0 = off). Preview with
+# `manage.py remove_inactive_accounts --dry-run`.
+# ACCOUNT_INACTIVITY_DAYS = 365
+# ACCOUNT_DELETION_GRACE_DAYS = 90
 
 # ---------------------------------------------------------------------------
 # Learning Spaces Datastore — the estate directory (Campus / Building / Room)

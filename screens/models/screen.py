@@ -4,7 +4,7 @@ from django.db import models
 from django.template.loader import get_template
 from django.urls import reverse
 from datetime import timedelta
-from django.db.models import Case, CharField, OuterRef, Q, Subquery, Value, When
+from django.db.models import Case, CharField, F, OuterRef, Q, Subquery, Value, When
 from django.utils import timezone
 
 from screens.models.schedule import Schedule
@@ -26,14 +26,19 @@ TICKER_STYLE_PRESETS = [
     (TICKER_STYLE_BOLD, "Bold marquee"),
 ]
 
-# How recently a screen must have checked in to still count as online. Mirrored
-# in the help docs as SCREEN_OFFLINE_AFTER ("one minute") — change both together.
-ONLINE_WINDOW = timedelta(minutes=1)
+# How recently a screen must have checked in to still count as online. Players
+# poll once a minute, so this rides out a few late or dropped polls: a single
+# missed check-in is network jitter, not something to put in front of an
+# operator. Mirrored in the help docs as SCREEN_OFFLINE_AFTER.
+ONLINE_WINDOW = timedelta(minutes=5)
 
-# A screen that stopped checking in this recently is amber rather than red: one
-# missed poll is usually a blip, not a dead device. Mirrored in the help docs as
-# SCREEN_ATTENTION_AFTER.
-ATTENTION_WINDOW = timedelta(minutes=10)
+# How long after its last check-in a screen becomes a probe target. Shorter
+# than ONLINE_WINDOW on purpose: check_screens only runs every 5 minutes, so
+# waiting for a screen to leave the online window before pinging it would show
+# a reachable screen red for up to a whole cycle before the ping could turn it
+# amber. Starting after a couple of missed polls means the answer is usually in
+# by the time it is needed. Mirrored as SCREEN_PROBE_AFTER.
+PROBE_AFTER = timedelta(minutes=2)
 
 # How long a successful ping keeps a screen amber. Deliberately longer than the
 # probe cadence (5 minutes, see CELERY_BEAT_SCHEDULE) so that one missed probe
@@ -48,7 +53,8 @@ class ScreenStatus(models.TextChoices):
     different questions. `last_seen` says "the player is polling"; a successful
     ping says "the box is powered and on the network". ATTENTION is the gap
     between them, and it is the diagnostically useful one: the device is alive
-    but its software is not doing its job.
+    but its software is not doing its job. It means only that -- a screen that
+    has merely gone quiet, with no ping to say it is alive, is OFFLINE.
     """
 
     ONLINE = "online", "Online"
@@ -65,6 +71,10 @@ class StatusReason(models.TextChoices):
     """
 
     PING_ONLY = "ping_only", "Responds to ping but is not reporting"
+    # No longer derived: it was a 1-10 minute grace tier, made redundant when
+    # ONLINE_WINDOW grew to cover a few missed polls. Kept so the history rows
+    # recorded under it still have a label, and so dropping it needs no
+    # migration of ScreenStatusEvent.reason's choices.
     RECENTLY_LOST = "recently_lost", "Stopped reporting recently"
     NO_RESPONSE = "no_response", "No contact and no ping response"
     NO_CONTACT = "no_contact", "No contact"
@@ -316,28 +326,35 @@ class Screen(models.Model):
         doughnut from drifting apart, the same way online_cutoff() is shared
         with the filter today.
 
-        All three cutoffs come off one `now`, and are built per call rather
-        than captured at import, because the answer moves with the clock.
+        Both cutoffs come off one `now`, and are built per call rather than
+        captured at import, because the answer moves with the clock.
 
-        Order matters. Ping beats grace: a screen that answers ping *and*
-        stopped reporting four minutes ago is amber for the more informative
-        of the two reasons. Anything that matches no tier is OFFLINE, with the
-        reason depending on whether a probe was actually attempted.
+        A probe result only counts if it is newer than the last check-in, i.e.
+        it was taken during the current silence. One left over from an earlier
+        outage says nothing about this one: without the rule, a screen that
+        failed a probe yesterday and went quiet again five minutes ago would
+        claim "no ping response" before anything had asked.
+
+        Anything that matches no tier is OFFLINE, with the reason depending on
+        whether a probe was actually attempted.
         """
         now = timezone.now()
+
+        def since_seen(s, value):
+            return (value is not None and s.last_seen is not None
+                    and value > s.last_seen)
+
         return (
             (ScreenStatus.ONLINE, "",
              Q(last_seen__gte=now - ONLINE_WINDOW),
              lambda s: s.last_seen is not None and s.last_seen >= now - ONLINE_WINDOW),
             (ScreenStatus.ATTENTION, StatusReason.PING_ONLY,
-             Q(last_ping_ok__gte=now - PING_WINDOW),
-             lambda s: s.last_ping_ok is not None and s.last_ping_ok >= now - PING_WINDOW),
-            (ScreenStatus.ATTENTION, StatusReason.RECENTLY_LOST,
-             Q(last_seen__gte=now - ATTENTION_WINDOW),
-             lambda s: s.last_seen is not None and s.last_seen >= now - ATTENTION_WINDOW),
+             Q(last_ping_ok__gte=now - PING_WINDOW, last_ping_ok__gt=F("last_seen")),
+             lambda s: (since_seen(s, s.last_ping_ok)
+                        and s.last_ping_ok >= now - PING_WINDOW)),
             (ScreenStatus.OFFLINE, StatusReason.NO_RESPONSE,
-             Q(last_ping_attempt__isnull=False),
-             lambda s: s.last_ping_attempt is not None),
+             Q(last_ping_attempt__gt=F("last_seen")),
+             lambda s: since_seen(s, s.last_ping_attempt)),
         )
 
     def status_and_reason(self):

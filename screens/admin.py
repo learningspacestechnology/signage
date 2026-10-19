@@ -851,9 +851,9 @@ class ScreenAdmin(TeamScopedAdminMixin, ModelAdmin):
     def show_status_detail(self, obj):
         """The reason behind the badge, plus how long it has been that way.
 
-        Amber is only actionable if it says *why* — "responds to ping" sends
-        someone to the player software, "stopped reporting recently" says wait
-        and look again.
+        Every badge needs its *why*: "responds to ping" sends someone to the
+        player software, "no ping response" to the power or the network, and
+        plain "no contact" says nothing has asked yet.
 
         The "since" figure comes from the recorded history, which lags the live
         status by up to one check_screens cycle, so it is only shown while the

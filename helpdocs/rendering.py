@@ -49,6 +49,9 @@ CONFIG_KEYS = (
     'UNCONFIGURED_SCREEN_MESSAGE',
     'IP_ACCESS_CONTROL_ENABLED',
     'ENTRA_AUTH_ENABLED',
+    'PASSWORD_LOGIN_ENABLED',
+    'ACCOUNT_INACTIVITY_DAYS',
+    'ACCOUNT_DELETION_GRACE_DAYS',
     'AUTO_MAKE_SCREENS_FOR_NEW_IPS',
     'TIME_ZONE',
     'SCREEN_PROBE_ENABLED',
@@ -64,10 +67,12 @@ DERIVED_CONFIG_KEYS = (
     'ROOM_SYNC_SCHEDULE',
     'ESTATE_SYNC_SCHEDULE',
     'SCREEN_OFFLINE_AFTER',
-    'SCREEN_ATTENTION_AFTER',
+    'SCREEN_PROBE_AFTER',
     'SCREEN_PING_WINDOW',
     'SCREEN_CHECK_SCHEDULE',
     'SCREEN_HISTORY_DAYS',
+    'PASSWORD_LOGIN_AVAILABLE',
+    'ACCOUNT_CHECK_SCHEDULE',
 )
 
 ALL_CONFIG_KEYS = CONFIG_KEYS + DERIVED_CONFIG_KEYS
@@ -144,7 +149,8 @@ def _derived_config():
     # Imported here rather than at module scope: helpdocs.rendering is imported
     # from the registry during app loading, and reaching into screens.models
     # that early would import models before the app registry is ready.
-    from screens.models.screen import ATTENTION_WINDOW, PING_WINDOW
+    from advertising.password_auth import password_login_enabled
+    from screens.models.screen import ONLINE_WINDOW, PING_WINDOW, PROBE_AFTER
 
     return {
         'CONTENT_TASK_MINUTES': _schedule_for_task(
@@ -157,15 +163,19 @@ def _derived_config():
             'room_schedules.tasks.sync_o365_rooms', 'daily at 02:15'),
         'ESTATE_SYNC_SCHEDULE': _schedule_for_task(
             'estate.tasks.sync_estate', 'daily at 02:45'),
-        # Screen.online() compares last_seen against now - 1 minute.
-        'SCREEN_OFFLINE_AFTER': 'one minute',
-        # The two other status windows, read off the constants themselves so
-        # prose and behaviour cannot drift.
-        'SCREEN_ATTENTION_AFTER': _describe_minutes(ATTENTION_WINDOW),
+        # The status windows, read off the constants themselves so prose and
+        # behaviour cannot drift.
+        'SCREEN_OFFLINE_AFTER': _describe_minutes(ONLINE_WINDOW),
+        'SCREEN_PROBE_AFTER': _describe_minutes(PROBE_AFTER),
         'SCREEN_PING_WINDOW': _describe_minutes(PING_WINDOW),
         'SCREEN_CHECK_SCHEDULE': _schedule_for_task(
             'screens.tasks.check_screens', 'every 5 minutes'),
         'SCREEN_HISTORY_DAYS': getattr(settings, 'SCREEN_STATUS_HISTORY_DAYS', 90),
+        'ACCOUNT_CHECK_SCHEDULE': _schedule_for_task(
+            'screens.tasks.remove_inactive_accounts', 'daily at 04:15'),
+        # PASSWORD_LOGIN_ENABLED is overridden while Entra is unusable, so pages
+        # describing what readers can do read this, not the raw setting.
+        'PASSWORD_LOGIN_AVAILABLE': password_login_enabled(),
     }
 
 
