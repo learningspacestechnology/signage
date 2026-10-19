@@ -495,3 +495,47 @@ under the same "only if created in this run" rule.
 `ENTRA_DEFAULT_TEAM_NAME` set now create users who see content but no screens until assigned
 location access. Documented in the help pages; adding the setting follows the three-place rule
 in `CLAUDE.md` plus the deploy repo.
+
+---
+
+## 11. Screen IPs are unique by form validation only, not by the database
+
+Found 2026-10-19, after an operator added a second screen on an IP another screen already had.
+`get_screen` (`screens/views.py`) finds a device's screen with `.filter(ip=ip).first()`, so of
+two screens on one address the device plays whichever the database returns first and the
+other is dead.
+
+**What is fixed.** `ScreenAdminForm.clean_ip` refuses a clash on add and on edit, naming the
+other screen only if it is in `scope_screens` for that request. Covered by
+`screens/tests/test_screen_ip_unique.py`. The admin is the only path where a person types an IP,
+so this closes the route the incident took.
+
+**What is not.** Nothing below the form stops a duplicate:
+
+- `get_screen`'s auto-create, with `AUTO_MAKE_SCREENS_FOR_NEW_IPS=True` (default `False`), is
+  check-then-create. Two near-simultaneous first requests from a new device can both create.
+- The shell, fixtures and `helpdocs/demo_data.py` all use `objects.create`, which never validates.
+
+**Why there is no `unique=True` yet.** The deploy container runs
+`python manage.py migrate && uwsgi` (`docker/advertising/Dockerfile` in the deploy repo), so a
+migration that fails on existing duplicates stops uwsgi starting: the whole site goes down, not
+just the migration. Production may still hold duplicates from before this change.
+
+**Fix, in order.**
+
+1. Check production, and resolve every pair by hand — which screen is right is an operator
+   call, so do not write a migration that picks one:
+   ```bash
+   docker compose exec advertising python manage.py shell -c \
+     "from django.db.models import Count; from screens.models import Screen; \
+      print(list(Screen.objects.values('ip').annotate(n=Count('id')).filter(n__gt=1)))"
+   ```
+2. `unique=True` on `Screen.ip`, then `makemigrations`. Put a `RunPython` before the `AlterField`
+   that raises naming the duplicate screens, so a missed one reads clearly in
+   `docker compose logs advertising` rather than as a bare `IntegrityError`. It still takes the
+   site down, so step 1 is not optional.
+3. Change `get_screen` to `get_or_create(ip=ip, defaults=...)`, which re-reads on
+   `IntegrityError` instead of returning a 500 to the losing request.
+4. Keep `clean_ip`. With it raising, the field is excluded from the model form's
+   `validate_unique`, so there is no second, generic "Screen with this Ip already exists."
+   message — and the generic one could not tell the user whether they can see the other screen.

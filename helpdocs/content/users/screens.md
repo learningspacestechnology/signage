@@ -15,7 +15,8 @@ have it, the device itself will tell you — see
    the building — *Library Entrance*, not *Screen 3*.
 3. Choose the **Schedule** it should follow. See
    [Scheduling what plays when](help:schedules).
-4. Enter the **IP** address of the device.
+4. Enter the **IP** address of the device. Each address can belong to only one
+   screen — see [One address, one screen](#one-address-one-screen).
 5. Optionally set an **Interspersed playlist** and **rate** — a playlist mixed
    into whatever this screen is showing, whichever playlist that is. See
    [Interspersed content](help:playlists).
@@ -33,6 +34,32 @@ should show as online.
     and begin its playlist again from the first item. It takes a couple of
     seconds and nothing is lost, but don't be surprised if you're watching the
     display while you edit it.
+{% endif %}
+
+{% if perms.screens.add_screen or perms.screens.change_screen %}
+## One address, one screen
+
+A display finds its own screen record by its IP address. If two screens shared
+an address, the display would play whichever one the system found first, and
+the other would never show anything. So saving a screen on an address another
+screen already uses is refused, with a message on the **IP** field:
+
+- **The screen "…" already uses this IP address** — the other screen is one you
+  can see. Usually either:
+    - it is an older record for the same display, so edit that one instead, or
+      delete it if it is no longer wanted; or
+    - that display's address has changed and this one has been given its old
+      address. Read the other display's new address off it and correct that
+      screen first.
+- **Another screen already uses this IP address, outside your current team or
+  locations** — the other screen exists, but you can't see it. If you belong to
+  more than one team, switch team and look again; otherwise ask an
+  administrator to find it.
+
+!!! warning "Screens that already share an address"
+    If two screens already share an address, neither can be saved — not even
+    to rename it — until one of them is given a different address or deleted.
+    Search the **Screens** list for the address to find both.
 {% endif %}
 
 ## Getting the address off the device
@@ -126,8 +153,12 @@ walking to the display.
 
 ## Finding screens
 
-On the **Screens** list you can search by **name, IP address, room or building**,
-and filter by:
+The **Screens** list opens with the screens that need someone at the top:
+**Offline** first, then **Needs attention**, then **Online**, and A to Z by name
+within each. Click a column heading to sort by that instead; screens that tie on
+it keep the same status-then-name order.
+
+You can search by **name, IP address, room or building**, and filter by:
 
 - **Schedule** — useful for checking which displays are affected before you
   change a schedule. Only schedules actually in use by screens you can see are

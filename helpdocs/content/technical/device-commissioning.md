@@ -33,7 +33,9 @@ The message on that page is
    off the device.
 3. Save.
 
-Full detail in [Managing screens](help:users/screens).
+Full detail in [Managing screens](help:users/screens). The form refuses an IP
+that another screen already has, since the device would only ever play one of
+them.
 
 ## Step 2b: register a room display
 
