@@ -1,5 +1,6 @@
 from .team import Team, TeamMembership
 from .user_preference import UserPreference
+from .account_lifecycle import AccountLifecycle
 from .source import Source
 from .playlist_entry import PlaylistEntry
 from .playlist import Playlist

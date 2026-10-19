@@ -24,7 +24,7 @@ class EntraBackendTests(TestCase):
         return self.backend.authenticate(request, claims=claims)
 
     def test_no_claims_returns_none(self):
-        # So password logins fall through to ModelBackend untouched.
+        # So password logins fall through to PasswordBackend untouched.
         self.assertIsNone(self._auth(claims=None))
 
     @override_settings(ENTRA_AUTO_CREATE_USERS=True, ENTRA_AUTO_GRANT_IS_STAFF=False,
@@ -54,6 +54,17 @@ class EntraBackendTests(TestCase):
         self.assertEqual(user.pk, existing.pk)
         self.assertEqual(User.objects.count(), 1)
         self.assertTrue(user.is_staff)  # existing staff flag preserved
+
+    @override_settings(ENTRA_AUTO_CREATE_USERS=True, ENTRA_ALLOWED_DOMAINS=[])
+    def test_inactive_user_is_refused_not_replaced(self):
+        # Deactivated by an admin or for inactivity: Microsoft sign-in must not
+        # get round it, nor auto-create a fresh account in its place.
+        existing = User.objects.create_user(
+            username="alice", email="alice@example.com", is_staff=True,
+            is_active=False)
+        self.assertIsNone(self._auth())
+        self.assertEqual(User.objects.count(), 1)
+        self.assertIsNone(self.backend.get_user(existing.pk))
 
     @override_settings(ENTRA_AUTO_CREATE_USERS=True, ENTRA_ALLOWED_DOMAINS=["other.com"])
     def test_domain_allow_list_rejects(self):
@@ -193,6 +204,14 @@ class EntraLoginTemplateTests(TestCase):
         self.assertNotContains(resp, "Sign in with a password instead")
         # Password form shown normally (not collapsed).
         self.assertNotContains(resp, 'id="login-form" class="hidden"')
+
+    @override_settings(ENTRA_AUTH_ENABLED=True, ENTRA_CLIENT_ID="x",
+                       PASSWORD_LOGIN_ENABLED=False)
+    def test_password_form_absent_when_password_login_disabled(self):
+        resp = self.client.get(reverse("admin:login"))
+        self.assertContains(resp, "Sign in with Microsoft")
+        self.assertNotContains(resp, 'id="login-form"')
+        self.assertNotContains(resp, "Sign in with a password instead")
 
     def test_return_to_site_link_removed(self):
         resp = self.client.get(reverse("admin:login"))

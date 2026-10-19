@@ -68,10 +68,12 @@ That page prints the device's address on screen. Read it off, then either:
 Read the **Detail** column first. It tells you which of these you are dealing
 with, and they call for completely different things.
 
-### "Stopped reporting recently"
+A display that has only missed a check-in or two still shows as online, so
+anything listed here has been silent for at least {{ config.SCREEN_OFFLINE_AFTER }}.
 
-It missed its last check-in and nothing more. Wait a minute and reload before
-doing anything — a display that restarts briefly looks exactly like this.
+You may see **"Stopped reporting recently"** in a screen's older status history.
+That reason is no longer used — it was what the system showed for a missed
+check-in or two before those started counting as online.
 
 ### "Responds to ping but is not reporting"
 

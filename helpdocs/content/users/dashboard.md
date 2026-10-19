@@ -36,13 +36,13 @@ Each one is a link to the full list.
 
 ## Screens by status
 
-Your displays split three ways. Displays check in by themselves every few
-seconds, so this is close to real time.
+Your displays split three ways. Displays check in by themselves about once a
+minute, so a display that stops shows up here within a few minutes.
 
 - **Online** — checked in within the last {{ config.SCREEN_OFFLINE_AFTER }}.
-- **Needs attention** — not checking in, but not confirmed dead. Usually a
-  display that is powered on and on the network while whatever should be showing
-  your content has stopped.
+- **Needs attention** — not checking in, but still answering on the network: a
+  display that is powered on while whatever should be showing your content has
+  stopped.
 - **Offline** — not checking in, and nothing suggests it is alive. Switched off,
   disconnected, or registered against the wrong address.
 

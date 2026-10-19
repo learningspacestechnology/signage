@@ -188,7 +188,9 @@ class Command(BaseCommand):
             user = User.objects.get(username=username)
             session = SessionStore()
             session[SESSION_KEY] = str(user.pk)
-            session[BACKEND_SESSION_KEY] = 'django.contrib.auth.backends.ModelBackend'
+            # The first backend, as Client.force_login picks: a path that has
+            # left AUTHENTICATION_BACKENDS makes every shot silently anonymous.
+            session[BACKEND_SESSION_KEY] = settings.AUTHENTICATION_BACKENDS[0]
             session[HASH_SESSION_KEY] = user.get_session_auth_hash()
             session.save()
             cookies[role] = {

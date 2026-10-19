@@ -31,8 +31,8 @@ def _build_msal_app(cache=None):
 class EntraOIDCBackend(BaseBackend):
     """Authenticate a user from validated Entra ID token claims.
 
-    Runs alongside the stock ModelBackend. Returns None whenever `claims`
-    is absent so it never interferes with username/password logins.
+    Runs alongside `advertising.password_auth.PasswordBackend`. Returns None
+    whenever `claims` is absent so it never interferes with password logins.
     """
 
     def authenticate(self, request, claims=None, **kwargs):
@@ -50,6 +50,11 @@ class EntraOIDCBackend(BaseBackend):
                 return None
 
         user = self._match_user(email)
+        if user is not None and not user.is_active:
+            # Deactivated by an admin or for inactivity. Refuse rather than
+            # fall through to auto-creation, which would hand them a fresh
+            # account and undo the deactivation.
+            return None
         if user is None:
             if not settings.ENTRA_AUTO_CREATE_USERS:
                 return None
@@ -61,7 +66,9 @@ class EntraOIDCBackend(BaseBackend):
         return user
 
     def get_user(self, user_id):
-        return User.objects.filter(pk=user_id).first()
+        # is_active, as ModelBackend checks: deactivating an account must end
+        # its Microsoft sessions too, not only its password ones.
+        return User.objects.filter(pk=user_id, is_active=True).first()
 
     @staticmethod
     def _match_user(email):

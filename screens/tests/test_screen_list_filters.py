@@ -13,7 +13,6 @@ from django.utils import timezone
 from estate.models import Building, Campus, Room
 from estate.tests.helpers import grant_all_locations
 from screens.models import Playlist, Schedule, Screen, ScreenStatus, Team
-from screens.models.screen import ATTENTION_WINDOW
 
 
 class ScreenListFilterTests(TestCase):
@@ -147,9 +146,10 @@ class ScreenListFilterTests(TestCase):
             schedule__id__exact=str(self.sched_a.pk), status=ScreenStatus.OFFLINE)
         self.assertEqual({s.name for s in self._rows(resp)}, {"screenAlphaDark"})
 
-    def test_a_screen_on_the_boundary_counts_as_offline(self):
+    def test_a_screen_just_past_the_online_cutoff_is_red_without_a_ping(self):
+        """No grace tier: amber needs a ping to say the device is alive."""
         Screen.objects.filter(pk=self.screen_a.pk).update(
-            last_seen=Screen.online_cutoff() - ATTENTION_WINDOW)
+            last_seen=Screen.online_cutoff() - timedelta(seconds=1))
         self.assertNotIn(
             "screenAlpha",
             {s.name for s in self._rows(self._changelist(status=ScreenStatus.ONLINE))})
@@ -183,13 +183,13 @@ class ScreenListFilterTests(TestCase):
         self.assertEqual(admin_obj.show_status(bare), admin_obj.show_status(annotated))
         self.assertIn("Responds to ping", admin_obj.show_status_detail(bare))
 
-    def test_a_screen_just_past_the_online_cutoff_is_amber_not_red(self):
-        """The grace tier, which needs no probe: one missed poll is not death."""
+    def test_a_screen_that_missed_a_few_polls_is_still_online(self):
+        """One late heartbeat is jitter, not a fault worth listing."""
         Screen.objects.filter(pk=self.screen_a.pk).update(
-            last_seen=Screen.online_cutoff() - timedelta(seconds=1))
+            last_seen=Screen.online_cutoff() + timedelta(seconds=30))
         self.assertIn(
             "screenAlpha",
-            {s.name for s in self._rows(self._changelist(status=ScreenStatus.ATTENTION))})
+            {s.name for s in self._rows(self._changelist(status=ScreenStatus.ONLINE))})
 
 
 class EstateFilterTests(TestCase):

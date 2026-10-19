@@ -79,15 +79,46 @@ deactivate the other.
 Usually a session or cookie problem rather than an identity one — have them try a
 private window first.
 
-## The password fallback
+## Password sign-in
 
-The sign-in page also offers **Sign in with a password instead**. This exists for
-service and test accounts and is unaffected by the Microsoft configuration; a
-password sign-in never touches Entra. Password accounts are the only ones for
-which the **Change password** page does anything.
+Password sign-in is currently
+{% if config.PASSWORD_LOGIN_AVAILABLE %}**on**{% else %}**off**{% endif %} on
+this deployment.{% if config.PASSWORD_LOGIN_AVAILABLE and not config.PASSWORD_LOGIN_ENABLED %}
+It has been switched off, but stays on because Microsoft sign-in isn't set up
+here — with both off, nobody could sign in at all.{% endif %}
 
-If Microsoft sign-in is disabled entirely for a deployment, the login page shows
-only the password form.
+When it's on, the sign-in page also offers **Sign in with a password instead**.
+This exists for service and test accounts; a password sign-in never touches
+Entra. Password accounts are the only ones for which the **Change password** page
+does anything. If Microsoft sign-in is disabled entirely, the page shows only the
+password form.
+
+A deployment can switch password sign-in off so that Microsoft is the only way
+in. When it's off:
+
+- The password form disappears from the sign-in page, and a password submitted
+  anyway is refused.
+- Anyone already signed in with a password is signed out on their next page load.
+- Nothing changes for people who sign in with Microsoft — their permissions,
+  teams and location access all still apply.
+- Passwords can still be set on accounts; they just don't work until password
+  sign-in is switched back on.
+
+It can only be switched off while Microsoft sign-in is enabled and configured.
+Otherwise the setting is ignored, so a deployment can't lock everyone out.
+
+### If Microsoft sign-in breaks
+
+With password sign-in off, a broken Microsoft sign-in — an expired client
+secret, a redirect address that no longer matches, an outage — means nobody can
+get in. Ask the deployment team to switch password sign-in back on, which takes a
+restart, and sign in with a password account. Ask them to switch it off again
+once Microsoft sign-in works.
+
+This only helps if a password account exists, so keep at least one staff account
+with a password, even while password sign-in is off.{% if config.ACCOUNT_INACTIVITY_DAYS %} An account kept for
+emergencies is by nature unused, so add it to the **Exempt from inactivity
+removal** group, or it will be deactivated after {{ config.ACCOUNT_INACTIVITY_DAYS }} days.{% endif %}
 
 ## Configuration
 

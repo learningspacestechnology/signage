@@ -51,12 +51,14 @@ when the display was last heard from.
 
 ![The screens list, showing each screen's status](screenshot:screen-list)
 
-Displays check in by themselves every few seconds. There are three states:
+Displays check in by themselves about once a minute. A screen stays online for
+{{ config.SCREEN_OFFLINE_AFTER }} after its last check-in, so one late or
+dropped check-in doesn't change anything. There are three states:
 
 | Status | What it means | Where to look |
 |---|---|---|
 | **Online** | Checked in within the last {{ config.SCREEN_OFFLINE_AFTER }}. | Nothing to do. |
-| **Needs attention** | Not checking in, but not confirmed dead either. | Usually the display's software. |
+| **Needs attention** | Not checking in, but still answering on the network. | The display's software. |
 | **Offline** | Not checking in, and nothing suggests it is alive. | Power, network, cable. |
 
 The **Detail** column always says which of these applies and why, so you never
@@ -67,20 +69,17 @@ have to work it out from the colour:
   Nearly always the browser: it has crashed, been closed, shows an error page,
   or is sitting on a cached page with its scripts stopped. Restarting the
   display fixes most of these.
-- **Stopped reporting recently** — it missed its last check-in but only just.
-  Wait and reload before chasing it; a display briefly restarting looks exactly
-  like this.
 - **No contact and no ping response** — the system asked and got nothing back.
 - **No contact** — it isn't checking in, and nothing has asked whether it is
-  reachable. See [Reachability checks](#reachability-checks) below.
+  reachable yet. See [Reachability checks](#reachability-checks) below.
 
 !!! note "Amber depends on a setting"
-    "Responds to ping but is not reporting" only ever appears when reachability
-    checking is turned on, which is a system-wide setting.
+    **Needs attention** only ever appears when reachability checking is turned
+    on, which is a system-wide setting.
 {% if config.SCREEN_PROBE_ENABLED %}    It is turned on here.
-{% else %}    It is **turned off** here, so screens move straight from
-    "stopped reporting recently" to offline. Ask whoever administers the system
-    if you'd like it on.
+{% else %}    It is **turned off** here, so a screen that stops checking in goes
+    straight from online to offline. Ask whoever administers the system if
+    you'd like it on.
 {% endif %}
 
 A screen that is offline is usually:
@@ -95,10 +94,16 @@ the new one off the screen and update the record.
 
 ### Reachability checks
 
-When it is turned on, the system quietly asks each non-reporting screen whether
-it is still on the network, {{ config.SCREEN_CHECK_SCHEDULE }}. That is what
-separates **needs attention** from **offline**, and it is the difference between
-restarting a browser and walking over with a spare cable.
+When it is turned on, the system quietly asks each screen that hasn't checked in
+for {{ config.SCREEN_PROBE_AFTER }} whether it is still on the network,
+{{ config.SCREEN_CHECK_SCHEDULE }}. That is what separates **needs attention**
+from **offline**, and it is the difference between restarting a browser and
+walking over with a spare cable.
+
+The check starts before the screen stops counting as online, so a display whose
+browser has crashed usually goes straight from green to amber. Because the check
+only runs {{ config.SCREEN_CHECK_SCHEDULE }}, it can occasionally show **No
+contact** for a minute or two first.
 
 A successful check keeps a screen amber for {{ config.SCREEN_PING_WINDOW }}. If
 it stops answering as well as not reporting, it turns red.

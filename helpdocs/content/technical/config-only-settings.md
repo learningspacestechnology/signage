@@ -73,6 +73,20 @@ redirect address, the domain allow-list, whether accounts are auto-created and
 whether they're auto-granted staff status. All deployment-time only. See
 [Microsoft sign-in](help:sso-and-entra).
 
+**Password sign-in** — currently
+{% if config.PASSWORD_LOGIN_AVAILABLE %}**on**{% else %}**off**{% endif %}.
+When off, Microsoft is the only way in and the sign-in page has no password
+form. Switching it back on is how you recover if Microsoft sign-in breaks — see
+[Password sign-in](help:sso-and-entra).
+
+**Inactive account removal** — currently
+{% if config.ACCOUNT_INACTIVITY_DAYS %}accounts are deactivated after
+**{{ config.ACCOUNT_INACTIVITY_DAYS }} days** unused and deleted
+**{{ config.ACCOUNT_DELETION_GRACE_DAYS }} days** later{% else %}**off**{% endif %}.
+Both numbers are deployment settings; which accounts are exempt is not — that's
+the **Exempt from inactivity removal** group. See
+[Users and teams](help:users-and-teams).
+
 ## Background jobs
 
 Job schedules **can** be changed in the interface, despite the defaults being set

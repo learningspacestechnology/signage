@@ -15,7 +15,7 @@ from django.utils import timezone
 
 from screens.models import (
     Playlist, Schedule, Screen, ScreenStatus, ScreenStatusEvent, StatusReason)
-from screens.models.screen import ATTENTION_WINDOW, ONLINE_WINDOW, PING_WINDOW
+from screens.models.screen import ONLINE_WINDOW, PING_WINDOW, PROBE_AFTER
 from screens.tasks import (
     _probe_screens, _record_status_transitions, check_screens,
     cleanup_status_events)
@@ -55,25 +55,38 @@ class StatusTierTests(ScreenStatusTestCase):
             (ScreenStatus.ATTENTION, StatusReason.PING_ONLY))
         self.assertFalse(screen.online())
 
-    def test_a_screen_that_only_just_stopped_reporting_is_amber(self):
-        """The grace tier, which needs no probe at all: one missed poll is not
-        death, so amber still means something with probing turned off."""
+    def test_a_few_missed_check_ins_are_still_online(self):
+        """Players poll once a minute. One late or dropped poll is network
+        jitter, and must not put a working screen in front of an operator."""
+        screen = self.make_screen(
+            last_seen=timezone.now() - ONLINE_WINDOW + datetime.timedelta(seconds=30))
+        self.assertEqual(screen.status_and_reason(), (ScreenStatus.ONLINE, ""))
+
+    def test_silence_alone_is_not_amber(self):
+        """Amber means "alive but not reporting", which only a ping can show.
+        A screen that has merely gone quiet goes straight to red."""
         screen = self.make_screen(
             last_seen=timezone.now() - ONLINE_WINDOW - datetime.timedelta(seconds=30))
         self.assertEqual(
             screen.status_and_reason(),
-            (ScreenStatus.ATTENTION, StatusReason.RECENTLY_LOST))
+            (ScreenStatus.OFFLINE, StatusReason.NO_CONTACT))
 
-    def test_ping_beats_grace(self):
-        """Both tiers match; the more informative reason has to win, or a
-        reachable screen would be reported as merely 'recently lost'."""
-        screen = self.make_screen(
-            last_seen=timezone.now() - ONLINE_WINDOW - datetime.timedelta(seconds=30),
-            last_ping_ok=timezone.now(),
-        )
-        self.assertEqual(
-            screen.status_and_reason(),
-            (ScreenStatus.ATTENTION, StatusReason.PING_ONLY))
+    def test_a_ping_from_before_the_last_check_in_does_not_count(self):
+        """Probe results from an earlier outage say nothing about this one.
+        Without the rule this screen would claim it had been asked and had
+        not answered, when nothing has asked since it went quiet."""
+        seen = timezone.now() - ONLINE_WINDOW - datetime.timedelta(minutes=1)
+        failed = self.make_screen(
+            name="failed", ip="10.0.0.10", last_seen=seen,
+            last_ping_attempt=seen - datetime.timedelta(minutes=1))
+        answered = self.make_screen(
+            name="answered", ip="10.0.0.11", last_seen=seen,
+            last_ping_ok=seen - datetime.timedelta(minutes=1),
+            last_ping_attempt=seen - datetime.timedelta(minutes=1))
+        for screen in (failed, answered):
+            self.assertEqual(
+                screen.status_and_reason(),
+                (ScreenStatus.OFFLINE, StatusReason.NO_CONTACT), screen.name)
 
     def test_probed_and_silent_is_offline_with_no_response(self):
         screen = self.make_screen(
@@ -108,6 +121,12 @@ class StatusTierTests(ScreenStatusTestCase):
         entry = settings.CELERY_BEAT_SCHEDULE['check-screens-every-5-minutes']
         self.assertGreater(PING_WINDOW.total_seconds(), entry['schedule'])
 
+    def test_probing_starts_before_a_screen_stops_counting_as_online(self):
+        """Otherwise a reachable screen would show red until the next probe
+        cycle came round, then flip to amber -- the status bouncing about for
+        no reason the operator can see."""
+        self.assertLess(PROBE_AFTER, ONLINE_WINDOW)
+
 
 class StatusAnnotationAgreementTests(ScreenStatusTestCase):
     """The SQL and Python halves of the tiers must never disagree.
@@ -122,10 +141,9 @@ class StatusAnnotationAgreementTests(ScreenStatusTestCase):
         offsets = (
             None,
             datetime.timedelta(0),
+            PROBE_AFTER,
             ONLINE_WINDOW,
             ONLINE_WINDOW + datetime.timedelta(seconds=1),
-            ATTENTION_WINDOW,
-            ATTENTION_WINDOW + datetime.timedelta(seconds=1),
             PING_WINDOW,
             PING_WINDOW + datetime.timedelta(seconds=1),
             datetime.timedelta(days=30),
@@ -227,6 +245,25 @@ class ProbeTaskTests(ScreenStatusTestCase):
         self.live.refresh_from_db()
         self.assertIsNone(self.live.last_ping_attempt)
 
+    def test_a_screen_missing_polls_is_probed_while_still_online(self):
+        """So that a reachable screen goes from green straight to amber when it
+        leaves the online window, rather than red until the next cycle."""
+        quiet = self.make_screen(
+            name="quiet", ip="10.4.0.3",
+            last_seen=timezone.now() - PROBE_AFTER - datetime.timedelta(seconds=30))
+        with mock.patch("screens.tasks.shutil.which", return_value="/bin/ping"), \
+                self._run(returncode=0) as run:
+            _probe_screens()
+        self.assertIn("10.4.0.3", {call.args[0][-1] for call in run.call_args_list})
+        quiet.refresh_from_db()
+        self.assertEqual(quiet.status(), ScreenStatus.ONLINE)
+
+        just_gone = quiet.last_seen + ONLINE_WINDOW + datetime.timedelta(seconds=1)
+        with time_machine.travel(just_gone, tick=False):
+            self.assertEqual(
+                quiet.status_and_reason(),
+                (ScreenStatus.ATTENTION, StatusReason.PING_ONLY))
+
     def test_a_timeout_counts_as_unreachable(self):
         import subprocess
         with mock.patch("screens.tasks.shutil.which", return_value="/bin/ping"), \
@@ -303,16 +340,17 @@ class StatusHistoryTests(ScreenStatusTestCase):
         )
 
     def test_a_change_of_reason_alone_is_a_transition(self):
-        """Amber for two different reasons is two different situations, and the
-        history would be misleading if only the status were compared."""
+        """Red for two different reasons is two different situations -- "never
+        asked" becoming "asked, no answer" is news -- and the history would be
+        misleading if only the status were compared."""
         screen = self.make_screen(
-            last_seen=timezone.now() - ONLINE_WINDOW - datetime.timedelta(seconds=30))
+            last_seen=timezone.now() - datetime.timedelta(days=1))
         _record_status_transitions()
-        Screen.objects.filter(pk=screen.pk).update(last_ping_ok=timezone.now())
+        Screen.objects.filter(pk=screen.pk).update(last_ping_attempt=timezone.now())
         self.assertEqual(_record_status_transitions(), 1)
         self.assertEqual(
             list(screen.status_events.values_list("reason", flat=True)),
-            [StatusReason.PING_ONLY, StatusReason.RECENTLY_LOST],
+            [StatusReason.NO_RESPONSE, StatusReason.NO_CONTACT],
         )
 
     def test_status_since_reads_off_the_latest_event(self):

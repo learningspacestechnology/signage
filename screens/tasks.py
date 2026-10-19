@@ -10,6 +10,7 @@ from django.conf import settings
 from django.utils import timezone
 from django.db.models import F, Max
 from screens.models import ScreenStatusEvent, Source, ScheduleRule, Screen
+from screens.models.screen import PROBE_AFTER
 
 logger = logging.getLogger(__name__)
 
@@ -69,9 +70,11 @@ def _ping(ip, timeout):
 def _probe_screens():
     """Ping the screens that are not currently reporting, and record the result.
 
-    Only non-online screens are probed. A screen that is already polling has
-    answered the more useful question by definition, so probing it adds network
-    noise and tells us nothing.
+    Only screens that have missed polls are probed. A screen that is polling
+    has answered the more useful question by definition, so probing it adds
+    network noise and tells us nothing. "Missed polls" is PROBE_AFTER, not the
+    online cutoff, so the answer is usually already in by the time a screen
+    stops counting as online -- see the note on PROBE_AFTER.
 
     Returns the number of screens probed, for logging and tests.
     """
@@ -92,7 +95,7 @@ def _probe_screens():
     timeout = int(getattr(settings, "SCREEN_PROBE_TIMEOUT", 1))
     targets = list(
         Screen.objects
-        .exclude(last_seen__gte=Screen.online_cutoff())
+        .exclude(last_seen__gte=timezone.now() - PROBE_AFTER)
         .values_list("pk", "ip")
     )
     if not targets:
@@ -190,3 +193,15 @@ def cleanup_status_events():
         .values_list("latest", flat=True)
     )
     ScreenStatusEvent.objects.filter(at__lt=cutoff).exclude(pk__in=latest).delete()
+
+
+@shared_task(name='screens.tasks.remove_inactive_accounts')
+def remove_inactive_accounts():
+    """Deactivate accounts unused for ACCOUNT_INACTIVITY_DAYS, and delete those
+    deactivated more than ACCOUNT_DELETION_GRACE_DAYS ago. See
+    screens.account_inactivity, which logs each account it acts on."""
+    from screens.account_inactivity import apply
+
+    report = apply()
+    logger.info("remove_inactive_accounts: marked %d, deleted %d",
+                len(report.deactivated), len(report.deleted))

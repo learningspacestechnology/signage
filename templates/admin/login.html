@@ -47,8 +47,10 @@
     {% comment %}
         Password form: shown by default, but collapsed behind a toggle when
         Entra is enabled. Keep it visible if a password login just failed so
-        the user can see the error.
+        the user can see the error. Absent altogether when password sign-in is
+        off (PASSWORD_LOGIN_ENABLED) — PasswordBackend refuses it anyway.
     {% endcomment %}
+    {% if password_login_enabled %}
     <form action="{{ app_path }}" method="post" id="login-form"{% if entra_auth_enabled and not form.errors and not form.non_field_errors %} class="hidden"{% endif %}>
         {% csrf_token %}
 
@@ -71,8 +73,9 @@
             {% endif %}
         </div>
     </form>
+    {% endif %}
 
-    {% if entra_auth_enabled %}
+    {% if entra_auth_enabled and password_login_enabled %}
         {# Toggle that reveals the password form. Hidden once the form shows. #}
         <div id="password-login-toggle" class="text-center mt-6{% if form.errors or form.non_field_errors %} hidden{% endif %}">
             <a href="#" id="show-password-login" class="text-sm text-font-subtle-light dark:text-font-subtle-dark hover:underline">

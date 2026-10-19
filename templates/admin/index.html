@@ -28,6 +28,12 @@
             <a href="{{ location_groups_review_url }}" class="font-semibold underline">{% translate "Review them" %}</a>
         </div>
     {% endif %}
+    {% if accounts_upcoming %}
+        <div class="mb-8 px-3 py-2.5 leading-[18px] rounded-default bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400">
+            {% blocktranslate count n=accounts_upcoming with days=accounts_warning_days %}{{ n }} account will be deactivated or deleted in the next {{ days }} days because nobody has signed in to it.{% plural %}{{ n }} accounts will be deactivated or deleted in the next {{ days }} days because nobody has signed in to them.{% endblocktranslate %}
+            <a href="{{ accounts_upcoming_url }}" class="font-semibold underline">{% translate "Review them" %}</a>
+        </div>
+    {% endif %}
 
     {# ---- Quick actions ------------------------------------------------ #}
     {% if can_add_source or can_add_playlist %}

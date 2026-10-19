@@ -109,6 +109,10 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'screens.tasks.cleanup_status_events',
         'schedule': crontab(minute=30, hour=3),
     },
+    'remove-inactive-accounts-daily': {
+        'task': 'screens.tasks.remove_inactive_accounts',
+        'schedule': crontab(minute=15, hour=4),
+    },
 }
 
 # --- Screen reachability probing -------------------------------------------
@@ -521,10 +525,24 @@ ENTRA_DEFAULT_TEAM_NAME = ''  # '' = none
 # Empty list = allow any account in the tenant.
 ENTRA_ALLOWED_DOMAINS = []
 
-# ModelBackend first so password logins (e.g. the superuser fallback)
-# short-circuit before the Entra backend, which only acts when given `claims`.
+# Username/password sign-in. False makes Microsoft the only way in, and ends
+# existing password sessions. Ignored while Entra sign-in is disabled or has no
+# client ID, so the admin cannot be locked out entirely.
+PASSWORD_LOGIN_ENABLED = True
+
+# Accounts with no sign-in (or live session) for this many days are deactivated
+# by screens.tasks.remove_inactive_accounts, then deleted this many days after
+# that. 0 turns the rule off. Exempt an account through the "Exempt from
+# inactivity removal" group. See screens/account_inactivity.py.
+ACCOUNT_INACTIVITY_DAYS = 365
+ACCOUNT_DELETION_GRACE_DAYS = 90
+
+# PasswordBackend first so password logins short-circuit before the Entra
+# backend, which only acts when given `claims`. It is ModelBackend underneath
+# and also answers permission checks for EVERY user, however they signed in:
+# never remove it to disable passwords — set PASSWORD_LOGIN_ENABLED instead.
 AUTHENTICATION_BACKENDS = [
-    'django.contrib.auth.backends.ModelBackend',
+    'advertising.password_auth.PasswordBackend',
     'advertising.entra_auth.EntraOIDCBackend',
 ]
 LOGIN_URL = '/admin/login/'
