@@ -4,7 +4,9 @@ Room displays are driven by Outlook room mailboxes. This page covers keeping tha
 inventory correct: bringing new rooms in, putting them in the right building, and
 dealing with the ones that stop working.
 
-Everything here is under **O365 rooms** in the sidebar.
+Everything here is under **O365 rooms** in the sidebar, and needs **Room
+Schedules → Rooms → Edit** in the permission grid — the pages move and create
+display rooms.
 
 ## How the pieces fit
 

@@ -1,0 +1,88 @@
+{% comment %}
+The permission grid: editable on the Group and User forms (PermissionGridWidget),
+read-only for a user's effective access (render_effective_access). Built from
+advertising/permission_catalogue.py — see advertising/permission_grid.py.
+{% endcomment %}
+{% if grid.superuser %}
+<p class="permission-grid__note">Superuser: holds every permission, whatever is ticked on this page.{% if grid.inactive %} The account is inactive, so none of it applies until it is reactivated.{% endif %}</p>
+{% else %}
+<div class="permission-grid{% if grid.readonly %} permission-grid--readonly{% endif %}"{% if not grid.readonly %} data-permission-grid{% endif %}>
+    {% if grid.readonly and grid.inactive %}
+    <p class="permission-grid__note">The account is inactive, so none of this applies until it is reactivated.</p>
+    {% endif %}
+    <table>
+        {# Fixed widths, so every section's columns line up: see permission_grid.css. #}
+        <colgroup>
+            <col>
+            {% for label in grid.action_labels %}<col class="permission-grid__column">{% endfor %}
+            <col class="permission-grid__column">
+        </colgroup>
+        {% for section in grid.sections %}
+        <tbody>
+            {# Only the headings this section has boxes under. #}
+            <tr class="permission-grid__section">
+                <th scope="colgroup">{{ section.title }}</th>
+                {% for label in grid.action_labels %}
+                {% if section.has_actions %}<th scope="col">{{ label }}</th>{% else %}<td></td>{% endif %}
+                {% endfor %}
+                {% if section.has_extras %}<th scope="col">{{ grid.extras_heading }}</th>{% else %}<td></td>{% endif %}
+            </tr>
+            {% for row in section.rows %}
+            {% if row.has_actions %}
+            <tr>
+                <th scope="row">
+                    <span class="permission-grid__label">{{ row.label }}</span>
+                    {% if row.description %}<span class="permission-grid__description">{{ row.description }}</span>{% endif %}
+                    {% if row.warning %}<span class="permission-grid__warning">{{ row.warning }}</span>{% endif %}
+                </th>
+                {% for cell in row.cells %}
+                <td>
+                    {% if not cell %}
+                    <span class="permission-grid__none" aria-hidden="true">—</span><span class="permission-grid__sr">Not available</span>
+                    {% elif grid.readonly %}
+                    {% include "admin/auth/_permission_state.html" %}
+                    {% else %}
+                    <input type="checkbox" name="{{ grid.name }}" value="{{ cell.key }}" id="{{ cell.id }}" class="{{ grid.checkbox_classes }}" aria-label="{{ cell.label }}" data-implies="{{ cell.implies }}"{% if cell.checked %} checked{% endif %}>
+                    {% endif %}
+                </td>
+                {% endfor %}
+                <td></td>
+            </tr>
+            {% endif %}
+            {% for cell in row.extras %}
+            {# A single permission: no actions, just on or off, in the Enabled column. #}
+            <tr>
+                <th scope="row">
+                    {% if grid.readonly %}
+                    <span class="permission-grid__label">{{ cell.label }}</span>
+                    {% else %}
+                    <label for="{{ cell.id }}" class="permission-grid__label">{{ cell.label }}</label>
+                    {% endif %}
+                    {% if cell.description %}<span class="permission-grid__description">{{ cell.description }}</span>{% endif %}
+                </th>
+                <td colspan="{{ grid.action_labels|length }}"></td>
+                <td>
+                    {% if grid.readonly %}
+                    {% include "admin/auth/_permission_state.html" %}
+                    {% else %}
+                    <input type="checkbox" name="{{ grid.name }}" value="{{ cell.key }}" id="{{ cell.id }}" class="{{ grid.checkbox_classes }}" data-implies="{{ cell.implies }}"{% if cell.checked %} checked{% endif %}>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+            {% endfor %}
+        </tbody>
+        {% endfor %}
+    </table>
+    {% if grid.readonly and grid.other %}
+    <div class="permission-grid__other">
+        <p>Also holds these, which the grid does not show:</p>
+        <ul>
+            {% for permission in grid.other %}
+            <li><code>{{ permission.key }}</code> — {{ permission.note }} {{ permission.title }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+</div>
+{% endif %}

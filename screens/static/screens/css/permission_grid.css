@@ -1,0 +1,162 @@
+/*
+ * The permission grid on the Group and User pages
+ * (templates/admin/auth/permission_grid.html).
+ *
+ * Hand-written against Unfold's custom properties rather than composed from
+ * utility classes: Unfold ships a compiled Tailwind bundle holding only the
+ * classes its own templates use. The checkboxes themselves carry Unfold's
+ * CHECKBOX_CLASSES, so they need nothing here.
+ */
+.permission-grid {
+    max-width: 60rem;
+    font-size: 0.875rem;
+    color: var(--color-font-default-light);
+}
+
+.permission-grid table {
+    width: 100%;
+    border-collapse: collapse;
+    /* Widths from the <colgroup>, so the box columns line up in every section
+     * whatever a section's own rows hold. */
+    table-layout: fixed;
+}
+
+.permission-grid__column {
+    width: 5rem;
+}
+
+.permission-grid th,
+.permission-grid td {
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--color-base-200);
+    text-align: center;
+    vertical-align: middle;
+}
+
+/* The checkbox centred in its column. */
+.permission-grid td input[type="checkbox"] {
+    margin: 0 auto;
+}
+
+.permission-grid th[scope="row"],
+.permission-grid th[scope="colgroup"] {
+    text-align: left;
+}
+
+.permission-grid th[scope="row"] {
+    font-weight: normal;
+}
+
+.permission-grid__section th,
+.permission-grid__section td {
+    padding-top: 1.25rem;
+    font-weight: 600;
+    color: var(--color-font-important-light);
+    border-bottom-color: var(--color-base-300);
+}
+
+.permission-grid__section th[scope="col"] {
+    font-size: 0.75rem;
+    color: var(--color-font-subtle-light);
+}
+
+.permission-grid__label {
+    display: block;
+    font-weight: 600;
+    color: var(--color-font-important-light);
+}
+
+label.permission-grid__label {
+    cursor: pointer;
+}
+
+.permission-grid__description,
+.permission-grid__warning {
+    display: block;
+    margin-top: 0.125rem;
+    color: var(--color-font-subtle-light);
+}
+
+.permission-grid__warning {
+    color: #b45309; /* amber-700: 5.0:1 on white */
+}
+
+/* Read-only boxes. Each carries visually-hidden text, so none of this is the
+ * only signal. */
+.permission-grid__state {
+    display: inline-block;
+    min-width: 1.25rem;
+    font-size: 1.25rem;
+    line-height: 1;
+    vertical-align: middle;
+}
+
+.permission-grid__state--full {
+    color: var(--color-primary-600);
+}
+
+.permission-grid__state--partial {
+    color: #b45309;
+}
+
+.permission-grid__none {
+    color: var(--color-base-400);
+}
+
+.permission-grid__note,
+.permission-grid__other {
+    margin-top: 0.75rem;
+}
+
+.permission-grid__other ul {
+    margin-top: 0.25rem;
+    padding-left: 1.25rem;
+    list-style: disc;
+}
+
+/* A box the script has ticked because another needs it: shown, not hidden. */
+.permission-grid input[data-required-by] {
+    opacity: 0.6;
+}
+
+.permission-grid__sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
+html.dark .permission-grid {
+    color: var(--color-font-default-dark);
+}
+
+html.dark .permission-grid th,
+html.dark .permission-grid td {
+    border-bottom-color: var(--color-base-800);
+}
+
+html.dark .permission-grid__section th,
+html.dark .permission-grid__section td {
+    color: var(--color-font-important-dark);
+    border-bottom-color: var(--color-base-700);
+}
+
+html.dark .permission-grid__label {
+    color: var(--color-font-important-dark);
+}
+
+html.dark .permission-grid__description,
+html.dark .permission-grid__section th[scope="col"] {
+    color: var(--color-font-subtle-dark);
+}
+
+html.dark .permission-grid__warning,
+html.dark .permission-grid__state--partial {
+    color: #fbbf24; /* amber-400 */
+}
+
+html.dark .permission-grid__state--full {
+    color: var(--color-primary-400);
+}

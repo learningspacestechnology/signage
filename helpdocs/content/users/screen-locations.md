@@ -94,8 +94,8 @@ box is always required for you.
 !!! warning "\"The results could not be loaded\" means a missing permission"
     If you can choose a building but the **Room** box then says *The results
     could not be loaded*, you have not been granted permission to read the room
-    directory. It is a separate permission from editing screens. Ask an
-    administrator to add it.
+    directory. Ask an administrator: permission to edit screens now includes
+    it, so opening your group and saving it again is usually enough.
 
 ## Filtering the screen list
 

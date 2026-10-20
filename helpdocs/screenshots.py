@@ -213,6 +213,31 @@ SHOTS = (
         # table, hiding the Teams column this shot is here to show.
     ),
     Shot(
+        name='group-form',
+        path='/admin/auth/group/{auth_group_id}/change/',
+        as_user=ADMIN,
+        wait_for='[data-permission-grid]',
+        full_page=True,
+        # As screen-form: the sticky submit row would land across the grid.
+        run_js=(
+            "const row = document.getElementById('submit-row');"
+            "if (row) { row.style.display = 'none'; }"
+        ),
+    ),
+    Shot(
+        name='user-effective-access',
+        path='/admin/auth/user/{facilities_user_id}/change/',
+        as_user=ADMIN,
+        # The first section only: the whole grid is several screens tall, and
+        # this is where a typical role's ticks are.
+        clip='.permission-grid--readonly tbody:first-of-type',
+        # As screen-form: the sticky submit row would land across the grid.
+        run_js=(
+            "const row = document.getElementById('submit-row');"
+            "if (row) { row.style.display = 'none'; }"
+        ),
+    ),
+    Shot(
         name='location-group-form',
         path='/admin/estate/locationgroup/{location_group_id}/change/',
         as_user=ADMIN,

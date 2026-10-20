@@ -1,7 +1,7 @@
 import json
 
 from django.conf import settings
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.admin import GroupAdmin as BaseGroupAdmin
 from django.contrib.auth.decorators import user_passes_test
@@ -16,10 +16,14 @@ from django.utils.formats import date_format
 from django.views.decorators.http import require_POST
 from unfold.admin import ModelAdmin, TabularInline
 from unfold.decorators import display
-from unfold.forms import AdminPasswordChangeForm, UserChangeForm
+from unfold.forms import AdminPasswordChangeForm
 from unfold.widgets import UnfoldAdminSelectWidget, UnfoldAdminTextInputWidget
 
-from advertising.forms import PreprovisionUserCreationForm
+from advertising.forms import (GroupPermissionForm, PreprovisionUserCreationForm,
+                               UserGridChangeForm)
+from advertising.permission_grid import (other_held, permission_key,
+                                         render_effective_access,
+                                         render_group_grid, summarise)
 from advertising.user_picker import UserPickerJsonView
 
 from advertising.middleware import (
@@ -489,44 +493,6 @@ admin.site.unregister(ClockedSchedule)
 admin.site.unregister(TaskResult)
 
 
-@admin.register(Permission)
-class PermissionAdmin(ModelAdmin):
-    """Registered only so `autocomplete_fields` can search permissions.
-
-    With ~140 permissions the stock `filter_horizontal` picker is a wall of
-    scrolling; autocomplete needs the related model to have a registered admin
-    with `search_fields`. This admin is read-only and deliberately kept out of
-    the sidebar (the UNFOLD nav is an explicit list, so it never appears).
-    """
-
-    search_fields = (
-        "name",
-        "codename",
-        "content_type__app_label",
-        "content_type__model",
-    )
-    def has_view_permission(self, request, obj=None):
-        # Django gates the autocomplete endpoint on this, so mirror "may edit
-        # groups or users" rather than requiring a separate auth.view_permission
-        # grant on every group-editing user.
-        return request.user.has_perm("auth.change_group") or request.user.has_perm(
-            "auth.change_user"
-        )
-
-    def has_module_permission(self, request):
-        # Keep it off the admin index; it exists purely to back autocomplete.
-        return False
-
-    def has_add_permission(self, request):
-        return False
-
-    def has_change_permission(self, request, obj=None):
-        return False
-
-    def has_delete_permission(self, request, obj=None):
-        return False
-
-
 def _all_locations_q():
     """Users exempt from location scoping: superusers and permission holders.
 
@@ -627,12 +593,59 @@ class TeamListFilter(admin.RelatedFieldListFilter):
         self.empty_value_display = "No team"
 
 
+def _without_unused_grid_fields(fieldsets, request, obj, model_admin, permissions):
+    """Drop the grid's fields where they would only be noise or a dead end.
+
+    "Other permissions" goes when nothing would be listed in it. The grid goes
+    entirely for someone who may view this page but not change it: Django would
+    render each declared field as a blank read-only value, so the caller shows
+    a read-only grid in its place instead.
+    """
+    drop = set()
+    if not model_admin.has_change_permission(request, obj):
+        drop |= {"capabilities", "other_permissions"}
+    elif not other_held(permissions):
+        drop.add("other_permissions")
+    return [
+        (name, {**opts, "fields": tuple(f for f in opts["fields"] if f not in drop)})
+        for name, opts in fieldsets
+        if not opts["fields"] or any(f not in drop for f in opts["fields"])
+    ]
+
+
+def _report_auto_ticked(request, form):
+    """Say so when saving ticked boxes the admin left unticked."""
+    labels = getattr(form, "auto_ticked_labels", lambda: [])()
+    if labels:
+        messages.info(request, "Also ticked, because the boxes you chose need "
+                               "them: " + "; ".join(labels) + ".")
+
+
 @admin.register(User)
 class UserAdmin(BaseUserAdmin, ModelAdmin):
-    form = UserChangeForm
+    form = UserGridChangeForm
     add_form = PreprovisionUserCreationForm
     change_password_form = AdminPasswordChangeForm
-    autocomplete_fields = ("groups", "user_permissions")
+    # Direct permissions are edited through the grid (UserGridChangeForm).
+    autocomplete_fields = ("groups",)
+    # BaseUserAdmin's, with user_permissions replaced by the grid and the
+    # combined view of what the person can do.
+    fieldsets = (
+        (None, {"fields": ("username", "password")}),
+        ("Personal info", {"fields": ("first_name", "last_name", "email")}),
+        ("Permissions", {"fields": ("is_active", "is_staff", "is_superuser", "groups")}),
+        ("What they can do", {
+            "description": "Everything their groups and direct permissions add "
+                           "up to. Hover over a tick to see where it comes from.",
+            "fields": ("show_effective_access",),
+        }),
+        ("Direct permissions", {
+            "classes": ("collapse",),
+            "fields": ("capabilities", "other_permissions"),
+        }),
+        ("Important dates", {"fields": ("last_login", "date_joined")}),
+    )
+    readonly_fields = ("show_effective_access",)
     list_display = (
         "username",
         "email",
@@ -708,8 +721,16 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
     def get_readonly_fields(self, request, obj=None):
         readonly = super().get_readonly_fields(request, obj)
         if obj is not None and not request.user.is_superuser:
-            readonly = (*readonly, *self.membership_summary)
+            # Superuser status read-only too: stock Django lets anyone with
+            # change_user tick it, on their own account included. Read-only
+            # fields are not read from the POST, so this is enforced, not just
+            # hidden.
+            readonly = (*readonly, "is_superuser", *self.membership_summary)
         return readonly
+
+    @display(description="What they can do")
+    def show_effective_access(self, obj):
+        return render_effective_access(obj)
 
     @display(description="Teams")
     def show_teams(self, obj):
@@ -741,6 +762,8 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
     def get_fieldsets(self, request, obj=None):
         fieldsets = super().get_fieldsets(request, obj)
         if obj is not None:
+            fieldsets = _without_unused_grid_fields(
+                fieldsets, request, obj, self, obj.user_permissions)
             if request.user.is_superuser:
                 return fieldsets
             return [*fieldsets, ("Teams and locations", {
@@ -763,6 +786,7 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
 
     def save_related(self, request, form, formsets, change):
         super().save_related(request, form, formsets, change)
+        _report_auto_ticked(request, form)
         # `teams` and `location_groups` only exist on the add form; a no-op on
         # the change page. Gate on is_superuser so a crafted POST can't grant
         # access even though get_fieldsets already hides the fields from
@@ -784,7 +808,48 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
 
 @admin.register(Group)
 class GroupAdmin(BaseGroupAdmin, ModelAdmin):
-    autocomplete_fields = ("permissions",)
+    """Permissions are edited through the grid — see advertising.permission_grid."""
+
+    form = GroupPermissionForm
+    list_display = ("name", "show_grants", "member_count")
+    fieldsets = ((None, {"fields": ("name", "capabilities", "other_permissions")}),)
+
+    def get_queryset(self, request):
+        return (super().get_queryset(request)
+                .prefetch_related("permissions__content_type")
+                .annotate(n_members=Count("user", distinct=True)))
+
+    def get_fieldsets(self, request, obj=None):
+        fieldsets = super().get_fieldsets(request, obj)
+        if obj is None:
+            return [(name, {**opts, "fields": tuple(
+                f for f in opts["fields"] if f != "other_permissions")})
+                for name, opts in fieldsets]
+        fieldsets = _without_unused_grid_fields(
+            fieldsets, request, obj, self, obj.permissions)
+        if not self.has_change_permission(request, obj):
+            fieldsets = [(None, {"fields": ("name", "show_grid")})]
+        return fieldsets
+
+    def get_readonly_fields(self, request, obj=None):
+        return (*super().get_readonly_fields(request, obj), "show_grid")
+
+    def save_related(self, request, form, formsets, change):
+        super().save_related(request, form, formsets, change)
+        _report_auto_ticked(request, form)
+
+    @display(description="What members can do")
+    def show_grid(self, obj):
+        return render_group_grid(obj)
+
+    @display(description="Grants")
+    def show_grants(self, obj):
+        # Reads the get_queryset prefetch.
+        return "; ".join(summarise({permission_key(p) for p in obj.permissions.all()})) or "—"
+
+    @display(description="Members", ordering="n_members")
+    def member_count(self, obj):
+        return obj.n_members
 
 
 class UnfoldTaskSelectWidget(UnfoldAdminSelectWidget, TaskSelectWidget):
