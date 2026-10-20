@@ -1,0 +1,8 @@
+{# One read-only box of the permission grid: held, partly held, or not. #}
+{% if cell.state == "full" %}
+<span class="permission-grid__state permission-grid__state--full material-symbols-outlined" aria-hidden="true" title="{{ cell.title }}">check</span><span class="permission-grid__sr">Yes. {{ cell.title }}</span>
+{% elif cell.state == "partial" %}
+<span class="permission-grid__state permission-grid__state--partial material-symbols-outlined" aria-hidden="true" title="{{ cell.title }}">indeterminate_check_box</span><span class="permission-grid__sr">Partly. {{ cell.title }}</span>
+{% else %}
+<span class="permission-grid__state" aria-hidden="true"></span><span class="permission-grid__sr">No</span>
+{% endif %}

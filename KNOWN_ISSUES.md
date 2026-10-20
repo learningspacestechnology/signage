@@ -459,8 +459,9 @@ leaks anything a restricted user could not already reach before location groups 
 **Room Schedules admin is not location-scoped.** `room_schedules.BuildingAdmin`, `RoomAdmin`,
 `RoomGroupAdmin` and the O365 pages (`o365_assigned_view`, `o365_unassigned_view`) are gated
 by model permissions only, exactly as before. A location-restricted user holding
-`room_schedules.view_room` still sees every display building and room. The O365 pages have
-no permission check at all beyond staff — the sidebar lambda merely hides them.
+`room_schedules.view_room` still sees every display building and room. The O365 pages
+require `room_schedules.change_room` (they had no check beyond staff until 2026-10-20) but
+not location access.
 
 *Intended fix.* Unregister and re-register the submodule's admins from this project (the
 pattern `advertising/admin.py` already uses for `User`/`Group`), scoping display rows through
@@ -539,3 +540,34 @@ just the migration. Production may still hold duplicates from before this change
 4. Keep `clean_ip`. With it raising, the field is excluded from the model form's
    `validate_unique`, so there is no second, generic "Screen with this Ip already exists."
    message — and the generic one could not tell the user whether they can see the other screen.
+
+---
+
+## 12. Users → Edit and Groups → Edit can grant any permission, to oneself included
+
+Found 2026-10-20, while replacing the raw permission picker with the grid
+(`advertising/permission_catalogue.py`, `advertising/permission_grid.py`).
+
+**Symptom.** A non-superuser holding `auth.change_group` can tick any box for a group they are
+in; one holding `auth.change_user` can add themselves to any group, or tick boxes in their own
+**Direct permissions** grid. Either reaches every permission in the grid — including
+**See every location**, which escapes location groups. Stock Django behaviour, and documented
+as "administrator access" on both rows of the grid and in the help pages, but not prevented.
+
+What *is* closed: **Superuser status** is read-only to non-superusers
+(`UserAdmin.get_readonly_fields`), so neither permission reaches superuser, nor team or
+location-group membership, which stay superuser-only.
+
+**Intended fix: you can't grant what you don't hold.** For a non-superuser editor:
+
+- In `PermissionGridFormMixin`, disable every box whose bundle is not a subset of the editor's
+  own permissions, and in `_save_m2m` refuse a change to such a box (adding *or* removing, so
+  they cannot strip a more powerful group either). Leave boxes already ticked on the object
+  untouched.
+- In `UserAdmin`, limit the `groups` field's queryset to groups whose permissions are a subset
+  of the editor's, keeping the user's existing groups selectable so a save does not drop them.
+- Decide whether `GroupAdmin.has_change_permission(obj)` should refuse groups holding more than
+  the editor does, rather than showing them disabled.
+
+Superusers are unaffected. Test with a `change_group` holder who lacks `screens.delete_screen`
+trying to tick **Screens → Delete** on their own group.

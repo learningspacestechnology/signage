@@ -58,15 +58,92 @@ create anything.
 Assign permissions through **Groups**, not to individuals.
 
 1. Go to **Groups** and create one per role, if you haven't already.
-2. Choose its permissions. The **Permissions** box is a search field, not a
-   list to scroll: click it and type part of what you're after — a model name
-   like `playlist`, or an action like `Can change` — and pick from the matches.
-   Each choice becomes a tag you can remove with its ×.
-3. Open the user and add them to the group.
+2. Tick what its members can do in the **What members can do** grid.
+3. Save, then open each user and add them to the group.
 
-See [How access works](help:access-model) for suggested roles and for the
-non-obvious permissions — the two ticker permissions and technical documentation
-access.
+![A group's permission grid](screenshot:group-form)
+
+The **Groups** list shows what each group grants and how many members it has.
+
+### Reading the grid
+
+Each row is one area of the interface, named and grouped as it is in the
+sidebar. The columns are **View**, **Add**, **Edit** and **Delete**. A dash means
+the action doesn't exist there: the estate directory, for example, can only be
+viewed.
+
+Each box grants everything that action needs, which is often more than one
+underlying permission. **Playlists → Edit** also lets members add, reorder and
+remove a playlist's content and change what it inherits from; **Schedules →
+Edit** covers the schedule's rules. You don't need to find those separately.
+
+Some boxes tick others, because they don't work without them:
+
+- **Add**, **Edit** and **Delete** tick **View** on the same row.
+- **Screens → Add** and **Screens → Edit** tick **Estate directory → View**: the
+  screen form's room picker reads the estate directory.
+- **Room Schedules → Buildings → Delete** ticks **Delete** on Rooms and Room
+  groups, because a building's rooms and room groups go with it.
+
+A box ticked this way stays ticked while the box needing it is ticked. If saving
+added anything you hadn't ticked, a message says what.
+
+Some rows are single permissions with no View, Add, Edit or Delete. You switch
+them on in the **Enabled** column on the right. They are the two ticker
+permissions under Screens, **See every location** under the estate directory,
+**Never removed for inactivity** and **Technical documentation**. See
+[How access works](help:access-model) for what each one does.
+
+Two pairs of names are easy to confuse:
+
+- **Schedules**, under Screens & Playlists, decides which playlist a screen shows
+  when. **Periodic tasks**, under Task Management, is the timetable for the
+  system's own background jobs. Leave that one to whoever runs the system.
+- **Room Schedules → Buildings** and **Rooms** are the display set-up for the
+  room-booking screens. The **Estate directory** is the University's own record
+  of campuses, buildings and rooms.
+
+!!! warning "Users → Edit and Groups → Edit are administrator access"
+    Someone who can edit groups can tick anything for their own group, and
+    someone who can edit users can put themselves in any group. Give these only
+    to people you would trust with every permission on the page. Neither lets
+    anyone become a superuser: only a superuser can change **Superuser status**,
+    and everyone else sees it read-only.
+
+### Other permissions
+
+A group set up before the grid existed may hold permissions the grid doesn't
+show. The usual case is Django's own *content type* permissions, picked by
+mistake because "content" is in the name. These are listed under **Other
+permissions**, ticked, each with the reason it isn't in the grid. Untick one to
+remove it. The section only appears when there is something in it.
+
+Saving an older group can also **add** permissions. If it could change playlists
+but not their entries, saving it with **Playlists → Edit** ticked adds the entry
+permissions, so members can now do what the box says.
+
+### Checking what someone can do
+
+Open their user page. **What they can do** shows the grid for everything their
+groups and direct permissions add up to. Hover over a tick to see which group
+gives it.
+
+![What a user can do, from their groups](screenshot:user-effective-access)
+
+A half-filled box means they hold only part of what that action needs, usually
+because the group giving it was set up before the grid. Open that group and save
+it to complete it. Permissions outside the grid are listed underneath.
+
+A superuser's page says they hold everything instead, because they do. The view
+also works for a deactivated account, showing what reactivating it would give
+back.
+
+### Direct permissions
+
+The user page also has a **Direct permissions** grid, collapsed, for
+permissions given to one person rather than through a group. Prefer a group:
+direct grants don't show in the **Groups** list, so they are the ones that get
+forgotten.
 
 ## Checking who is in which team
 
@@ -81,6 +158,21 @@ The filter's **No team** option is the one to reach for: it finds the accounts
 that can see nothing at all. A user lands there between being created and being
 given a team, and again if their last membership is removed — they can still
 sign in, they just arrive at an empty interface.
+
+The other way round, the **Teams** list has a **Member names** column. Its
+search box finds a team by a member's name or email address as well as by the
+team's own name. Search for a full name ("Jane Smith") to find only teams that
+person is in, not every team with a Jane and a Smith.
+
+A user's own page shows the same thing for one person. Superusers get a
+**Teams** block and a **Location groups** block at the bottom of the page, with
+one row per membership, and can add or remove rows there. Anyone else who can
+open the page sees a read-only **Teams and locations** section instead.
+
+Wherever you pick a person — the member rows on a team or location group — they
+are shown by name, with their email address in brackets, and you can type
+either to find them. Someone who has never signed in and was added without a
+name shows as their email address alone.
 
 ## Changing someone's password
 
@@ -101,8 +193,9 @@ see **Inactive accounts** below. To keep its history for good, add it to the
 **Exempt from inactivity removal** group.{% endif %}
 
 If they're changing role rather than leaving, remove them from the team instead:
-open the team and delete their membership row. Location groups work the same
-way: remove the member row on the group, or on the user's own page.
+delete their membership row, either on the team or in the **Teams** block on the
+user's own page. Location groups work the same way: remove the member row on the
+group, or in the **Location groups** block on the user's page.
 
 ## Inactive accounts
 
@@ -158,8 +251,12 @@ Teams are superuser-only, and hidden from everyone else.
 1. Go to **Teams** and choose **Add team**.
 2. Give it a **Name**. It's shown in the team switcher at the top of the page, so
    name it after the group of people or the area they look after.
-3. Add **members** using the membership rows.
+3. Add **members** using the membership rows. Type part of a person's name or
+   email address to find them.
 4. Save.
+
+You can also add someone to a team from their own user page, in the **Teams**
+block.
 
 ### Deleting a team
 

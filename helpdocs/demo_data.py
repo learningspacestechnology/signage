@@ -126,6 +126,19 @@ def seed():
     )
     TeamMembership.objects.create(user=facilities, team=demo_team)
 
+    # A role group, for the permission grid screenshot. The stray content type
+    # permission is the classic mistake the grid's "Other permissions" catches:
+    # picked from the old raw list because "content" is in its name.
+    from advertising.permission_catalogue import permissions_for
+    editors = Group.objects.create(name='Content editors')
+    for spec in sorted(permissions_for({
+            'content:add', 'content:change', 'playlists:add', 'playlists:change',
+            'schedules:view', 'screens:view'})) + ['contenttypes.add_contenttype']:
+        app_label, codename = spec.split('.')
+        editors.permissions.add(Permission.objects.get(
+            content_type__app_label=app_label, codename=codename))
+    facilities.groups.add(editors)
+
     # ---- Content ---------------------------------------------------------
     sources = []
     for index, (colour, label) in enumerate(POSTER_COLOURS):
@@ -550,6 +563,8 @@ def seed():
         'estate_building_id': estate_library.pk,
         'estate_room_id': estate_rooms['RVL-0101'].pk,
         'location_group_id': location_group.pk,
+        'auth_group_id': editors.pk,
+        'facilities_user_id': facilities.pk,
     }
 
 

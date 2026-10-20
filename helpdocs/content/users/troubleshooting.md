@@ -166,7 +166,8 @@ a gap to be filled.
 
 If the **Room** box says *The results could not be loaded* for every building,
 that is a different problem: you have not been given permission to read the room
-list. Ask an administrator.
+list. Ask an administrator. Permission to edit screens now includes it, so saving
+your group again is usually enough.
 
 ## A room display is showing the wrong bookings, or none
 

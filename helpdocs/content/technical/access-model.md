@@ -64,41 +64,58 @@ playlists and schedules are not tied to a place and are unaffected.
 
 ## Layer 3: Groups and permissions
 
-Permissions are standard Django model permissions — add, change, delete and view,
-per model. Assign them through **Groups** rather than to individuals; a group per
-role is far easier to audit than fifty individual permission sets.
+Groups decide what members can do: view, add, edit or delete, area by area.
+Each group is edited through a grid whose rows match the sidebar. See
+[Users and teams](help:users-and-teams) for how to read it. Assign permissions
+through groups rather than to individuals: a group per role is far easier to
+audit than fifty individual permission sets.
 
-Reasonable starting roles:
+Reasonable starting roles, in the grid's terms:
 
-| Group | Permissions |
+| Group | Tick |
 |---|---|
-| **Content editor** | Add/change/view content and playlists |
-| **Scheduler** | The above, plus add/change/view schedules and screens |
-| **Technical** | The above, plus room schedules, and technical documentation access |
+| **Content editor** | Content and Playlists: View, Add, Edit |
+| **Scheduler** | The above, plus Schedules and Screens: View, Edit |
+| **Screen editor** | Screens: View, Edit, and nothing else. Members can rename a screen, place it in a room, and point it at a schedule, but can't change the schedule itself |
+| **Technical** | The above, plus the Room Schedules rows and Technical documentation |
 
-### Four permissions worth knowing about
+**Screens → Edit** also ticks **Estate directory → View**, because the room
+picker needs it. A screen editor still sees only the screens in their team and
+their locations.
 
-The ticker tape is split across two of them, so the shape of the display and the
-message on it can be delegated separately.
+### Single permissions worth knowing about
 
-**`screens.change_ticker_settings`** — lets a user turn the ticker on and choose
-its layout, deciding whether the bar overlays the content or the content shrinks
-to make room.
+These are switched on in the grid's **Enabled** column. None of View, Add, Edit
+or Delete includes them.
 
-**`screens.change_ticker_text`** — lets a user write and style the scrolling
-message, without any say over whether the ticker is on.
+**Ticker: turn it on and choose its layout** and **Ticker: write and style the
+message**, under Screens. The ticker is split so that the shape of the display
+and the message on it can be delegated separately. The first decides whether the
+bar overlays the content or the content shrinks to make room. The second covers
+the scrolling message and how it looks, with no say over whether the ticker is
+on. **Screens → Edit** grants neither, and a user with neither sees no ticker
+fields on the screen form and no ticker documentation.
 
-Neither is granted by `screens.change_screen`. A user holding neither sees no
-ticker fields on the screen form and no ticker documentation, so the feature is
-invisible until someone grants it deliberately.
+**See every location**, under Estate directory. Exempts a user from location
+groups entirely. Hand it out through the **All locations** group rather than
+directly, so the **Users** list shows who has it at a glance.
 
-**`estate.access_all_locations`** ("Can see all locations") — exempts a user
-from location groups entirely. Hand it out through the **All locations** group
-rather than directly, so the **Users** list can show who has it at a glance.
+**Never removed for inactivity**, under Users, Groups & Teams. Exempts an account
+from automatic removal. Hand it out through the **Exempt from inactivity
+removal** group.
 
-**`helpdocs.view_technical_docs`** — grants access to this documentation set.
-Superusers have it implicitly. Grant it via a group to anyone doing the work
-described here.
+**Technical documentation**, under Help. Grants access to this documentation
+set. Superusers have it implicitly. Grant it through a group to anyone doing the
+work described here.
+
+### Permissions that amount to administrator access
+
+**Users → Edit** and **Groups → Edit**. Someone who can edit groups can tick
+anything for their own group, and someone who can edit users can put themselves
+in any group. Treat both as administrator access.
+
+They stop short of superuser: only a superuser can change **Superuser status**,
+and anyone else sees it read-only.
 
 ## How they compose
 

@@ -51,8 +51,8 @@ Location groups do not restrict those yet.
 
 ## Who sees everything
 
-**Superusers**, and anyone holding the permission **estate | location group |
-Can see all locations**, are not limited at all.
+**Superusers**, and anyone with **Estate directory → See every location** ticked
+in the permission grid, are not limited at all.
 
 That permission is handed out through the **All locations** group. When location
 groups were introduced, every existing staff account was added to it, so nobody
@@ -80,7 +80,9 @@ Location groups are superuser-only.
     - **Buildings**: type to search; buildings are grouped by campus.
     - **Rooms**: type a room name, its datastore reference or its building
       name.
-4. Add **members** using the member rows at the bottom.
+4. Add **members** using the member rows at the bottom. Type part of a person's
+   name or email address to find them; each is shown by name, with their email
+   address in brackets.
 5. Save.
 
 ![Editing a location group](screenshot:location-group-form)
@@ -115,6 +117,12 @@ of a user's location groups, or *No access*. The **By location access** filter
 finds each case. **No location access** finds the accounts that currently see
 no screens.
 
+The **Location groups** list works the other way round. Its **Member names**
+column lists who is in each group, and its search box finds a group by a
+member's name or email address as well as by the group's own name. A user's own
+page shows their groups too: superusers can edit them there, and anyone else
+who can open the page sees them read-only, under **Teams and locations**.
+
 ## When the estate changes underneath a group
 
 The overnight refresh never deletes a campus, building or room that a location
@@ -143,11 +151,10 @@ Only superusers can edit location groups and their members, just as only
 superusers can manage teams.
 
 !!! warning "Editing groups or users is close to superuser"
-    Anyone holding **Can change group** or **Can change user** can put
-    themselves, or anyone else, in the **All locations** group, or give the
-    **Can see all locations** permission directly. They can also grant any other
-    permission, so this is not new, but keep those two permissions to people
-    you would trust with every location.
+    Anyone with **Groups → Edit** or **Users → Edit** can put themselves, or
+    anyone else, in the **All locations** group, or tick **See every location**
+    directly. They can also grant any other permission, so this is not new, but
+    keep those two permissions to people you would trust with every location.
 
 ## When something looks wrong
 

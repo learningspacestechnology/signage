@@ -152,7 +152,9 @@ onto the account they're actually using and deactivate the other.
 ### A user can see the sidebar entry but gets an error opening it
 
 Team and permission layers disagreeing — they have the team but not the model
-permission. See [How access works](help:access-model).
+permission. Their user page's **What they can do** grid shows every permission
+they hold and which group it comes from; a half-filled box is a group that needs
+saving again. See [How access works](help:access-model).
 
 ## Content
 
