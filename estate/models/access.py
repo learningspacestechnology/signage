@@ -73,7 +73,8 @@ class LocationGroupMembership(models.Model):
         verbose_name = 'location group membership'
 
     def __str__(self):
-        return f"{self.user} ∈ {self.group}"
+        # By name, as screens.TeamMembership: this labels each saved inline row.
+        return f"{self.user.get_full_name() or self.user} ∈ {self.group}"
 
 
 def stale_grants_q():

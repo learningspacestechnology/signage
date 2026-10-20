@@ -80,7 +80,9 @@ Location groups are superuser-only.
     - **Buildings**: type to search; buildings are grouped by campus.
     - **Rooms**: type a room name, its datastore reference or its building
       name.
-4. Add **members** using the member rows at the bottom.
+4. Add **members** using the member rows at the bottom. Type part of a person's
+   name or email address to find them; each is shown by name, with their email
+   address in brackets.
 5. Save.
 
 ![Editing a location group](screenshot:location-group-form)
@@ -114,6 +116,12 @@ The **Users** list has a **Locations** column showing *All locations*, the names
 of a user's location groups, or *No access*. The **By location access** filter
 finds each case. **No location access** finds the accounts that currently see
 no screens.
+
+The **Location groups** list works the other way round. Its **Member names**
+column lists who is in each group, and its search box finds a group by a
+member's name or email address as well as by the group's own name. A user's own
+page shows their groups too: superusers can edit them there, and anyone else
+who can open the page sees them read-only, under **Teams and locations**.
 
 ## When the estate changes underneath a group
 

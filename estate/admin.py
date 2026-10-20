@@ -10,6 +10,10 @@ from django.utils.html import format_html, format_html_join
 from unfold.admin import ModelAdmin, TabularInline
 from unfold.widgets import UnfoldAdminCheckboxSelectMultipleWidget
 
+from advertising.user_picker import (MEMBER_SEARCH_FIELDS,
+                                     UserPickerInlineMixin, members_by_name,
+                                     names_only_when_autocompleting,
+                                     user_name)
 from estate.location_scope import (ALL_LOCATIONS, rooms_granted_by,
                                    scope_screens, scope_to_locations,
                                    sees_all_locations, visible_room_ids)
@@ -391,10 +395,9 @@ class LocationGroupForm(forms.ModelForm):
         _flag_missing(self.fields['campuses'])
 
 
-class LocationGroupMembershipInline(TabularInline):
+class LocationGroupMembershipInline(UserPickerInlineMixin, TabularInline):
     model = LocationGroupMembership
     extra = 0
-    autocomplete_fields = ('user',)
     verbose_name = "member"
     verbose_name_plural = "members"
 
@@ -409,9 +412,11 @@ class LocationGroupAdmin(ModelAdmin):
 
     form = LocationGroupForm
     list_display = ('name', 'show_grants', 'rooms_covered', 'member_count',
-                    'show_needs_review')
+                    'show_members', 'show_needs_review')
     list_filter = (NeedsReviewFilter,)
-    search_fields = ('name',)
+    search_fields = ('name', *MEMBER_SEARCH_FIELDS)
+    search_help_text = ("Search by location group name, or a member's name or "
+                        "email address.")
     autocomplete_fields = ('rooms',)
     readonly_fields = ('stale_grants',)
     inlines = [LocationGroupMembershipInline]
@@ -447,7 +452,11 @@ class LocationGroupAdmin(ModelAdmin):
             n_members=_grant_count(LocationGroupMembership, 'group'),
             needs_review=ExpressionWrapper(
                 stale_grants_q(), output_field=BooleanField()),
-        )
+        ).prefetch_related(members_by_name())
+
+    def get_search_fields(self, request):
+        return names_only_when_autocompleting(
+            request, super().get_search_fields(request))
 
     def save_related(self, request, form, formsets, change):
         # super() first: its save_m2m() does rooms.set() from the form, which
@@ -483,6 +492,10 @@ class LocationGroupAdmin(ModelAdmin):
     @admin.display(description="Members", ordering='n_members')
     def member_count(self, obj):
         return obj.n_members
+
+    @admin.display(description="Member names")
+    def show_members(self, obj):
+        return ", ".join(user_name(u) for u in obj.members.all()) or "—"
 
     @admin.display(description="Needs review", ordering='needs_review')
     def show_needs_review(self, obj):

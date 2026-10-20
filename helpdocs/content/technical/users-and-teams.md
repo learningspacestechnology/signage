@@ -82,6 +82,21 @@ that can see nothing at all. A user lands there between being created and being
 given a team, and again if their last membership is removed — they can still
 sign in, they just arrive at an empty interface.
 
+The other way round, the **Teams** list has a **Member names** column. Its
+search box finds a team by a member's name or email address as well as by the
+team's own name. Search for a full name ("Jane Smith") to find only teams that
+person is in, not every team with a Jane and a Smith.
+
+A user's own page shows the same thing for one person. Superusers get a
+**Teams** block and a **Location groups** block at the bottom of the page, with
+one row per membership, and can add or remove rows there. Anyone else who can
+open the page sees a read-only **Teams and locations** section instead.
+
+Wherever you pick a person — the member rows on a team or location group — they
+are shown by name, with their email address in brackets, and you can type
+either to find them. Someone who has never signed in and was added without a
+name shows as their email address alone.
+
 ## Changing someone's password
 
 Only relevant for password accounts. Open the user, and use the password change
@@ -101,8 +116,9 @@ see **Inactive accounts** below. To keep its history for good, add it to the
 **Exempt from inactivity removal** group.{% endif %}
 
 If they're changing role rather than leaving, remove them from the team instead:
-open the team and delete their membership row. Location groups work the same
-way: remove the member row on the group, or on the user's own page.
+delete their membership row, either on the team or in the **Teams** block on the
+user's own page. Location groups work the same way: remove the member row on the
+group, or in the **Location groups** block on the user's page.
 
 ## Inactive accounts
 
@@ -158,8 +174,12 @@ Teams are superuser-only, and hidden from everyone else.
 1. Go to **Teams** and choose **Add team**.
 2. Give it a **Name**. It's shown in the team switcher at the top of the page, so
    name it after the group of people or the area they look after.
-3. Add **members** using the membership rows.
+3. Add **members** using the membership rows. Type part of a person's name or
+   email address to find them.
 4. Save.
+
+You can also add someone to a team from their own user page, in the **Teams**
+block.
 
 ### Deleting a team
 

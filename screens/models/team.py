@@ -46,7 +46,9 @@ class TeamMembership(models.Model):
         unique_together = ("user", "team")
 
     def __str__(self):
-        return f"{self.user} ∈ {self.team}"
+        # By name: the username is a sign-in address, and this labels each
+        # saved row of the membership inlines.
+        return f"{self.user.get_full_name() or self.user} ∈ {self.team}"
 
 
 @receiver(pre_delete, sender=Team)

@@ -20,6 +20,7 @@ from unfold.forms import AdminPasswordChangeForm, UserChangeForm
 from unfold.widgets import UnfoldAdminSelectWidget, UnfoldAdminTextInputWidget
 
 from advertising.forms import PreprovisionUserCreationForm
+from advertising.user_picker import UserPickerJsonView
 
 from advertising.middleware import (
     ALL_TEAMS,
@@ -172,6 +173,11 @@ def _patched_admin_get_urls():
             'set-accent/',
             set_accent_view,
             name='set_accent',
+        ),
+        path(
+            'user-picker/',
+            admin.site.admin_view(UserPickerJsonView.as_view(admin_site=admin.site)),
+            name='user_picker',
         ),
     ]
     return (
@@ -603,6 +609,9 @@ class UserLocationGroupInline(TabularInline):
     verbose_name = "location group"
     verbose_name_plural = "location groups"
 
+    def get_queryset(self, request):
+        return super().get_queryset(request).order_by("group__name")
+
 
 class TeamListFilter(admin.RelatedFieldListFilter):
     """Team filter for the Users list, with the "no team" option spelled out.
@@ -686,12 +695,21 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
         return list_display
 
     def get_inlines(self, request, obj):
+        from screens.admin import UserTeamInline
+
         inlines = list(super().get_inlines(request, obj))
-        # Superusers only, as LocationGroupAdmin is: a location group grants
+        # Superusers only, as TeamAdmin and LocationGroupAdmin are: both grant
         # access, so anyone else editing membership could widen their own.
+        # Everyone else gets the read-only summary from get_fieldsets.
         if obj is not None and request.user.is_superuser:
-            inlines.append(UserLocationGroupInline)
+            inlines += [UserTeamInline, UserLocationGroupInline]
         return inlines
+
+    def get_readonly_fields(self, request, obj=None):
+        readonly = super().get_readonly_fields(request, obj)
+        if obj is not None and not request.user.is_superuser:
+            readonly = (*readonly, *self.membership_summary)
+        return readonly
 
     @display(description="Teams")
     def show_teams(self, obj):
@@ -715,12 +733,24 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
         verb, when = account_inactivity.next_event(obj, timezone.now())
         return f"{verb} {date_format(timezone.localtime(when), 'j M Y')}"
 
+    #: Shown read-only on the change page to anyone but a superuser, who gets
+    #: the editable inlines instead. Reads the get_queryset prefetch and
+    #: annotation: the change view fetches its object through get_queryset.
+    membership_summary = ("show_teams", "show_locations")
+
     def get_fieldsets(self, request, obj=None):
         fieldsets = super().get_fieldsets(request, obj)
+        if obj is not None:
+            if request.user.is_superuser:
+                return fieldsets
+            return [*fieldsets, ("Teams and locations", {
+                "description": "Only superusers can change these.",
+                "fields": self.membership_summary,
+            })]
         # Only superusers manage team or location group membership (see
         # CLAUDE.md); hide both fields from everyone else on the add form.
         superuser_only = {"teams", "location_groups"}
-        if obj is None and not request.user.is_superuser:
+        if not request.user.is_superuser:
             fieldsets = [
                 (
                     name,

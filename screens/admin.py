@@ -14,6 +14,10 @@ from unfold.admin import ModelAdmin, TabularInline, StackedInline
 from unfold.decorators import display
 
 from advertising.middleware import ALL_TEAMS
+from advertising.user_picker import (MEMBER_SEARCH_FIELDS,
+                                     UserPickerInlineMixin, members_by_name,
+                                     names_only_when_autocompleting,
+                                     user_name)
 from estate.location_scope import (scope_screens, scope_to_locations,
                                    sees_all_locations,
                                    wholly_visible_building_ids)
@@ -908,21 +912,47 @@ class ScreenAdmin(TeamScopedAdminMixin, ModelAdmin):
         return ", ".join(obj.teams.values_list('name', flat=True))
 
 
-class TeamMembershipInline(TabularInline):
+class TeamMembershipInline(UserPickerInlineMixin, TabularInline):
     model = TeamMembership
     extra = 0
-    autocomplete_fields = ('user',)
+
+
+class UserTeamInline(TabularInline):
+    """This user's teams, on their change page. Superusers only, as TeamAdmin is."""
+
+    model = TeamMembership
+    fk_name = 'user'
+    extra = 0
+    autocomplete_fields = ('team',)
+    verbose_name = "team"
+    verbose_name_plural = "teams"
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).order_by('team__name')
 
 
 @admin.register(Team)
 class TeamAdmin(ModelAdmin):
-    list_display = ('name', 'member_count', 'object_count')
-    search_fields = ('name',)
+    list_display = ('name', 'member_count', 'show_members', 'object_count')
+    search_fields = ('name', *MEMBER_SEARCH_FIELDS)
+    search_help_text = "Search by team name, or a member's name or email address."
     inlines = [TeamMembershipInline]
 
+    def get_queryset(self, request):
+        return super().get_queryset(request).prefetch_related(members_by_name())
+
+    def get_search_fields(self, request):
+        return names_only_when_autocompleting(
+            request, super().get_search_fields(request))
+
+    # Both columns read the prefetched members rather than querying per row.
     @display(description="Members")
     def member_count(self, obj):
-        return obj.members.count()
+        return len(obj.members.all())
+
+    @display(description="Member names")
+    def show_members(self, obj):
+        return ", ".join(user_name(u) for u in obj.members.all()) or "—"
 
     @display(description="Owned objects")
     def object_count(self, obj):
