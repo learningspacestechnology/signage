@@ -75,24 +75,23 @@ class Source(models.Model):
         return self.name
 
     def clean(self):
-        if hasattr(self, "bulk_create") and self.bulk_create:
+        # No team check here: the form's teams are saved only after clean(), so
+        # reading them from the database rejects a teamless source however many
+        # teams were just ticked. The admin requires a team itself -- see
+        # TeamScopedAdminMixin.
+        if getattr(self, "bulk_create", False):
+            # The bulk form has no single file to put here; it runs
+            # validate_upload on each of its files instead.
             return
-        if self.pk and not self.teams.exists():
-            raise ValidationError("Source must belong to at least one team.")
         if self.type in [self.IMAGE, self.VIDEO] and self.file.name is None:
             raise ValidationError({'file': "File cannot be blank for image or video type sources"})
-        if self.type == self.VIDEO and self.file.name[-4:] != ".mp4":
-            raise ValidationError({'file': "Video files must have .mp4 extensions"})
-        if self.type == self.IMAGE:
-            try:
-                img = Image.open(self.file)
-                if img.width > settings.MAX_IMG_WIDTH or img.height > settings.MAX_IMG_HEIGHT:
-                    raise ValidationError({'file': f"Image resolution must be at most "
-                                                   f"{settings.MAX_IMG_WIDTH}x{settings.MAX_IMG_HEIGHT}"})
-                # Cache dimensions to avoid reopening image in pre_save
-                self._cached_img_dimensions = (img.width, img.height)
-            except Exception as e:
-                raise ValidationError({'file': f"Error opening image file: {e}"})
+        try:
+            dimensions = validate_upload(self.type, self.file)
+        except ValidationError as e:
+            raise ValidationError({'file': e.messages})
+        if dimensions:
+            # Cache dimensions to avoid reopening image in pre_save
+            self._cached_img_dimensions = dimensions
 
 
     def src(self):
@@ -125,6 +124,32 @@ class Source(models.Model):
     def meta_times_touch(self):
         for playlist in self.playlists.all():
             playlist.meta_times_touch()
+
+
+def validate_upload(source_type, file):
+    """Check one file against what a source of ``source_type`` can play.
+
+    Returns an image's ``(width, height)``, otherwise None. Raises a
+    ValidationError with no field attached: ``Source.clean`` files it under
+    ``file``, and the bulk upload form under the name of the file that failed.
+    """
+    if source_type == Source.VIDEO:
+        if file.name[-4:] != ".mp4":
+            raise ValidationError("Video files must have .mp4 extensions")
+        return None
+    if source_type != Source.IMAGE:
+        return None
+    try:
+        img = Image.open(file)
+    except Exception as e:
+        raise ValidationError(f"Error opening image file: {e}")
+    # Outside the try: inside it, this error was caught and re-wrapped as an
+    # "Error opening image file" message.
+    if img.width > settings.MAX_IMG_WIDTH or img.height > settings.MAX_IMG_HEIGHT:
+        raise ValidationError(f"Image resolution must be at most "
+                              f"{settings.MAX_IMG_WIDTH}x{settings.MAX_IMG_HEIGHT}")
+    return img.width, img.height
+
 
 @receiver(pre_save, sender=Source)
 def set_orig_file_hash_and_resolution(sender, instance=None, raw=False, **kwargs):

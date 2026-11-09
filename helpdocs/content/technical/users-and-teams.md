@@ -283,6 +283,21 @@ An object can belong to several teams at once, which is how genuinely shared
 content is handled — a notice owned by both *Central* and *Library* is visible
 and editable in both.
 
+### Content with no team
+
+Content with no team at all is invisible to everyone except a superuser working
+under **All teams**. Older versions of bulk upload left every file in a batch
+but the last one like that. The uploader saw one item arrive, and the rest
+seemed to vanish. To find and fix them:
+
+1. Switch to **All teams** with the team name at the top of the page.
+2. Open **Content**, then **Filters**, and choose **No team** under **By team**.
+3. Open each item, tick its **Teams**, and save.
+
+The **By team** filter is only offered under All teams. Under any one team the
+list is already that team's, so content with no team isn't on it, and an item
+with no team can't be opened until you switch.
+
 ### What sharing one object implies
 
 A shared object can point at content only one of its teams owns: a schedule owned

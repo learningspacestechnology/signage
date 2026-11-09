@@ -1,4 +1,3 @@
-from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.template.loader import get_template
@@ -269,11 +268,6 @@ class Screen(models.Model):
             ("change_ticker_text", "Can change ticker text and style on screens"),
             ("change_ticker_settings", "Can turn the ticker on and choose its layout on screens"),
         ]
-
-    def clean(self):
-        super().clean()
-        if self.pk and not self.teams.exists():
-            raise ValidationError("Screen must belong to at least one team.")
 
     def save(self, *args, **kwargs):
         # Here rather than in the form, so every writer holds it: the admin,
