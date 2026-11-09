@@ -18,6 +18,11 @@ dependencies = [
     "msal>=1.28.0",
     "pillow==12.1.1",
     "markdown>=3.10.2",
+    # Every outbound HTTPS call (httpx, msal via requests, httplib2) verifies
+    # against certifi's bundle, not the OS store. Direct, with a floor, because
+    # the deploy Dockerfile installs from this file rather than uv.lock: this
+    # is what keeps the eMudhra-distrusting bundle (Oct 2026) in production.
+    "certifi>=2026.10.19",
 ]
 
 [project.optional-dependencies]

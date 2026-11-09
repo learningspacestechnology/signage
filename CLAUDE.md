@@ -112,6 +112,12 @@ Celery broker/backend defaults to `redis://redis:6379/0`.
 
 **Behind a reverse proxy:** the IP comes from `request.META['REMOTE_ADDR']` by default, which will be the proxy's loopback address — every request would look the same and the gate would deny everyone. Set `USE_FIRST_FORWARDED_FOR_IP=True` (leftmost `X-Forwarded-For` entry, i.e. original client) or `USE_LAST_FORWARDED_FOR_IP=True` (rightmost, i.e. nearest trusted hop) in production settings, and make sure nginx forwards `X-Forwarded-For`. Pick `_FIRST_` only if the whole proxy chain is trusted, since clients can spoof leading XFF entries otherwise.
 
+### Outbound TLS
+
+Every outbound HTTPS call — httpx (LSD, Graph), msal via requests (Entra, O365), httplib2 (`room_schedules/o365_requests.py`) — verifies against **certifi's bundle, not the OS trust store**. A CA distrust (e.g. the October 2026 eMudhra compromise) therefore reaches the app only through a certifi bump; updating the image's `ca-certificates` covers curl and stdlib `ssl` but not these clients. `certifi` is a direct dependency with a version floor for that reason: the deploy Dockerfile installs from `pyproject.toml`, not `uv.lock`, so the floor is what production honours.
+
+httplib2 consults `HTTPLIB2_CA_CERTS`, then certifi, then its **own bundled `cacerts.txt`** — a stale root list that still trusts the eMudhra-affected AAA root. `advertising/tests/test_trust_store.py` fails if httplib2 stops resolving to certifi, or if certifi regains a distrusted root.
+
 ### Teams, location groups and Groups
 
 The admin uses three orthogonal authorisation layers — keep them separate. Teams decide *whose* objects you see, location groups decide *where* (which estate places, and so which screens), and `auth.Group` permissions decide *what you can do*.
