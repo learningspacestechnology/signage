@@ -47,8 +47,6 @@ class Playlist(models.Model):
 
     def clean(self):
         super().clean()
-        if self.pk and not self.teams.exists():
-            raise ValidationError("Playlist must belong to at least one team.")
         if self.interspersed_playlist_id and self.interspersed_playlist_id == self.pk:
             raise ValidationError(
                 {"interspersed_playlist": "A playlist cannot be its own interspersed playlist."})

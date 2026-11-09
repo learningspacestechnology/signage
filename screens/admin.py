@@ -114,7 +114,9 @@ class TeamScopedAdminMixin:
 
     def save_related(self, request, form, formsets, change):
         super().save_related(request, form, formsets, change)
-        obj = form.instance
+        self.attach_active_team(request, form.instance)
+
+    def attach_active_team(self, request, obj):
         active = getattr(request, 'active_team', None)
         if active is None or active is ALL_TEAMS:
             return
@@ -316,6 +318,32 @@ class PlaylistListFilter(admin.SimpleListFilter):
         return queryset.filter(playlistentry__playlist__id=self.value())
 
 
+class TeamListFilter(admin.SimpleListFilter):
+    """Filter by owning team, including content that has none.
+
+    Content with no team is invisible to everyone but a superuser viewing all
+    teams. Bulk uploads used to leave all but the last file of a batch like
+    that, so "No team" is how those are found and given a team. Offered only
+    under All teams (see ``SourceDisplay.get_list_filter``): anywhere else the
+    list is already one team's, and "No team" would always be empty.
+    """
+
+    title = "team"
+    parameter_name = "team"
+    NO_TEAM = "none"
+
+    def lookups(self, request, model_admin):
+        return [(self.NO_TEAM, "No team"),
+                *Team.objects.order_by('name').values_list('pk', 'name')]
+
+    def queryset(self, request, queryset):
+        if self.value() == self.NO_TEAM:
+            return queryset.filter(teams__isnull=True)
+        if self.value():
+            return queryset.filter(teams__pk=self.value())
+        return queryset
+
+
 @admin.register(Source)
 class SourceDisplay(HideChangeFormDeleteMixin, TeamScopedAdminMixin, ModelAdmin):
     readonly_fields = ('image_preview',)
@@ -344,10 +372,17 @@ class SourceDisplay(HideChangeFormDeleteMixin, TeamScopedAdminMixin, ModelAdmin)
     def show_teams(self, obj):
         return ", ".join(obj.teams.values_list('name', flat=True))
 
+    def get_list_filter(self, request):
+        filters = super().get_list_filter(request)
+        if getattr(request, 'active_team', None) is ALL_TEAMS:
+            return (*filters, TeamListFilter)
+        return filters
+
     def get_urls(self):
         urls = super().get_urls()
         my_urls = [
-            re_path(r'^bulk_create/$', self.bulk_create_view, name='screens_source_bulk_create'),
+            re_path(r'^bulk_create/$', self.admin_site.admin_view(self.bulk_create_view),
+                    name='screens_source_bulk_create'),
         ]
         return my_urls + urls
 
@@ -355,13 +390,24 @@ class SourceDisplay(HideChangeFormDeleteMixin, TeamScopedAdminMixin, ModelAdmin)
         request.bulk_create = True
         return super().changeform_view(request)
 
+    @staticmethod
+    def _is_bulk(request, obj):
+        return obj is None and getattr(request, "bulk_create", False)
+
+    def get_exclude(self, request, obj=None):
+        # Per request, not by assigning self.exclude: this admin instance is
+        # shared by every request, so a bulk upload and an ordinary add running
+        # at once would swap each other's fields.
+        excluded = super().get_exclude(request, obj)
+        if self._is_bulk(request, obj):
+            excluded = [*excluded, "file", "name", "url"]
+        return excluded
+
     def get_form(self, request, obj=None, **kwargs):
-        if obj is None and hasattr(request, "bulk_create") and request.bulk_create:  # TODO and bulk create permission
+        if self._is_bulk(request, obj):  # TODO and bulk create permission
             kwargs['form'] = SourceBulkCreateForm
-            self.exclude = ("file", "name")
         else:
             kwargs["form"] = PlaylistAssigningSourceForm
-            self.exclude = ()
         form_class = super().get_form(request, obj, **kwargs)
         if 'playlists' in form_class.base_fields:
             # Copy first: the declared field is one object shared by every form
@@ -379,6 +425,13 @@ class SourceDisplay(HideChangeFormDeleteMixin, TeamScopedAdminMixin, ModelAdmin)
         if not change:
             obj.created_by = request.user
         form.save(commit=True)
+
+    def save_related(self, request, form, formsets, change):
+        super().save_related(request, form, formsets, change)
+        # A bulk upload saves one Source per file, but form.instance -- all the
+        # mixin above sees -- is only the last of them.
+        for source in Source.objects.filter(pk__in=getattr(form, 'saved_source_ids', ())):
+            self.attach_active_team(request, source)
 
     class Media:
         js = (

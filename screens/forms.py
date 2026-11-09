@@ -1,12 +1,12 @@
 from estate.models import Building
 from estate.picker import BuildingChoiceField, room_picker_label
-from screens.models import Playlist, Screen
+from screens.models import Playlist, Screen, Source
 from django import forms
 from django.core.exceptions import ValidationError
 from django.forms import ModelForm, FileField
 from unfold.widgets import UnfoldAdminImageFieldWidget
 from django.conf import settings
-from screens.models.source import file_help_text
+from screens.models.source import file_help_text, validate_upload
 from screens.team_scope import TeamLabelledModelMultipleChoiceField
 
 
@@ -88,6 +88,18 @@ class SourceBulkCreateForm(PlaylistAssigningSourceForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # Tells Source.clean to skip its file checks: the instance has no single
+        # file, so clean() below checks each uploaded one instead.
+        self.instance.bulk_create = True
+        # A website has no file to upload. Removing the choice also makes the
+        # field reject a crafted POST that names it.
+        if "type" in self.fields:
+            self.fields["type"].choices = [
+                choice for choice in self.fields["type"].choices
+                if choice[0] != Source.IFRAME
+            ]
+            self.fields["type"].help_text = (
+                "The type of every file in this batch. To add a website, use Add Content.")
         # Same reason as the parent's `file` hint: read the dimensions per request,
         # not once at import. A class-body f-string would freeze whichever settings
         # module happened to load first.
@@ -96,10 +108,24 @@ class SourceBulkCreateForm(PlaylistAssigningSourceForm):
             f"{settings.MAX_IMG_WIDTH}x{settings.MAX_IMG_HEIGHT}; videos must be .mp4."
         )
 
-    def is_valid(self):
-        """Return True if the form has no errors, or False otherwise."""
-        self.instance.bulk_create = True
-        return self.is_bound and not self.errors
+    def clean(self):
+        cleaned = super().clean()
+        # Every file is checked before any is saved, and one bad file rejects
+        # the batch: a half-saved batch leaves the operator working out which
+        # files to upload again.
+        self.checked_files = []
+        source_type, files = cleaned.get("type"), cleaned.get("files")
+        if not source_type or not files:
+            return cleaned
+        problems = []
+        for file in files:
+            try:
+                self.checked_files.append((file, validate_upload(source_type, file)))
+            except ValidationError as e:
+                problems.extend(f"{file.name}: {message}" for message in e.messages)
+        if problems:
+            self.add_error("files", problems)
+        return cleaned
 
     def save(self, commit=True):
         if self.errors:
@@ -110,14 +136,23 @@ class SourceBulkCreateForm(PlaylistAssigningSourceForm):
                 )
             )
         if commit:
-            # If committing, save the instance and the m2m data immediately.
-            for file in self.cleaned_data["files"]:
+            # One Source per file, made by re-saving the same instance under a
+            # new pk: the admin keeps a reference to it for its redirect and log
+            # entry, so it has to end up saved. That leaves form.instance as the
+            # last file only, so the pks are kept for the admin, which attaches
+            # the active team to every one of them.
+            self.saved_source_ids = []
+            for file, dimensions in self.checked_files:
                 self.instance.file = file
                 self.instance.id = None
+                self.instance._state.adding = True
                 self.instance.name = file.name
+                if dimensions:
+                    self.instance._cached_img_dimensions = dimensions
                 self.instance.save()
                 self.instance.playlists.set(self.cleaned_data["playlists"], through_defaults={"number": 10})
                 self._save_m2m()
+                self.saved_source_ids.append(self.instance.pk)
         else:
             # If not committing, add a method to the form to allow deferred
             # saving of m2m data.

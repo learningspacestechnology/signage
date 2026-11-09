@@ -186,12 +186,91 @@ class TeamScopingTests(TestCase):
         resp = c.get('/admin/set-active-team/all/')
         self.assertEqual(resp.status_code, 400)
 
-    # --- Model clean: at least one team --------------------------------------
+    # --- Giving a teamless object a team ------------------------------------
+    # The models' clean() used to insist on a team by reading the database,
+    # which the ticked teams only reach after validation -- so an object with
+    # no team could never be given one. The form is what requires a team now.
+    # Only under All teams: any one team's scope leaves a teamless object out.
 
-    def test_clean_rejects_object_with_zero_teams(self):
-        src = Source.objects.create(type=Source.IFRAME, name="orphan", url="http://o")
-        with self.assertRaises(ValidationError):
-            src.clean()
+    def _orphan_source(self):
+        return Source.objects.create(type=Source.IFRAME, name="orphan",
+                                     url="http://orphan.example/")
+
+    def _source_post(self, source, **extra):
+        return {'name': source.name, 'type': source.type, 'url': source.url,
+                '_save': 'Save', **extra}
+
+    def _playlist_post(self, playlist, **extra):
+        return {
+            'name': playlist.name, 'description': '', 'default_duration': '10',
+            'interspersed_playlist': '', 'interspersed_rate': '1',
+            'parents_list-TOTAL_FORMS': '0', 'parents_list-INITIAL_FORMS': '0',
+            'parents_list-MIN_NUM_FORMS': '0', 'parents_list-MAX_NUM_FORMS': '1000',
+            'playlistentry_set-TOTAL_FORMS': '0', 'playlistentry_set-INITIAL_FORMS': '0',
+            'playlistentry_set-MIN_NUM_FORMS': '0', 'playlistentry_set-MAX_NUM_FORMS': '1000',
+            '_save': 'Save', **extra,
+        }
+
+    def test_superuser_can_tick_a_team_for_a_teamless_source(self):
+        orphan = self._orphan_source()
+        c = Client()
+        c.force_login(self.super)
+        resp = c.post(f'/admin/screens/source/{orphan.pk}/change/',
+                      self._source_post(orphan, teams=[self.team_b.pk]))
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(list(orphan.teams.all()), [self.team_b])
+
+    def test_all_teams_still_requires_a_team_to_be_ticked(self):
+        orphan = self._orphan_source()
+        c = Client()
+        c.force_login(self.super)
+        resp = c.post(f'/admin/screens/source/{orphan.pk}/change/', self._source_post(orphan))
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('teams', resp.context['adminform'].form.errors)
+        self.assertFalse(orphan.teams.exists())
+
+    def test_superuser_can_tick_a_team_for_a_teamless_playlist(self):
+        orphan = Playlist.objects.create(name="orphan-list")
+        c = Client()
+        c.force_login(self.super)
+        resp = c.post(f'/admin/screens/playlist/{orphan.pk}/change/',
+                      self._playlist_post(orphan, teams=[self.team_a.pk]))
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(list(orphan.teams.all()), [self.team_a])
+
+    # --- Finding content with no team ----------------------------------------
+
+    def test_no_team_filter_lists_only_teamless_content(self):
+        self._orphan_source()
+        c = Client()
+        c.force_login(self.super)
+        resp = c.get('/admin/screens/source/?team=none')
+        self.assertContains(resp, "orphan")
+        self.assertNotContains(resp, "srcA")
+        self.assertNotContains(resp, "srcShared")
+
+    def test_team_filter_lists_that_teams_content(self):
+        c = Client()
+        c.force_login(self.super)
+        resp = c.get(f'/admin/screens/source/?team={self.team_b.pk}')
+        self.assertContains(resp, "srcB")
+        self.assertContains(resp, "srcShared")
+        self.assertNotContains(resp, "srcA")
+
+    def test_team_filter_is_offered_only_under_all_teams(self):
+        from screens.admin import TeamListFilter
+
+        def has_filter(user, team=None):
+            c = Client()
+            c.force_login(user)
+            if team is not None:
+                c.get(f'/admin/set-active-team/{team.pk}/')
+            changelist = c.get('/admin/screens/source/').context['cl']
+            return any(isinstance(f, TeamListFilter) for f in changelist.filter_specs)
+
+        self.assertTrue(has_filter(self.super))
+        self.assertFalse(has_filter(self.super, self.team_a))
+        self.assertFalse(has_filter(self.user_a))
 
     # --- Team deletion guards ------------------------------------------------
 
