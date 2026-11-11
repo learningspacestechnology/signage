@@ -10,6 +10,12 @@ dependencies = [
     "django-cleanup==9.0.0",
     "django-unfold==0.82.0",
     "celery[redis]==5.3.6",
+    # kombu 5.7 requires `packaging` only through its own `redis` extra, which
+    # celery 5.3.6's `[redis]` never requests: a lock with kombu 5.7 has no
+    # `packaging`, so the Redis transport fails to import and the worker and
+    # beat die at startup. Tests run Celery eagerly and would not notice. Lift
+    # this only alongside a Celery upgrade, after starting a worker on Redis.
+    "kombu<5.7",
     "django-celery-beat==2.5.0",
     "django-celery-results==2.6.0",
     "django-recurrence==1.14",
@@ -19,9 +25,11 @@ dependencies = [
     "pillow==12.1.1",
     "markdown>=3.10.2",
     # Every outbound HTTPS call (httpx, msal via requests, httplib2) verifies
-    # against certifi's bundle, not the OS store. Direct, with a floor, because
-    # the deploy Dockerfile installs from this file rather than uv.lock: this
-    # is what keeps the eMudhra-distrusting bundle (Oct 2026) in production.
+    # against certifi's bundle, not the OS store. Direct, with a floor, so no
+    # relock can fall back below the eMudhra-distrusting bundle (Oct 2026).
+    # Production goes further than the lock: the deploy Dockerfile installs
+    # uv.lock's pins, then upgrades certifi alone to its newest release on
+    # every update. The locked version is what dev and the tests run.
     "certifi>=2026.10.19",
 ]
 
