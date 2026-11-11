@@ -37,6 +37,8 @@ uv run celery -A advertising beat
 
 To add packages: `uv add <package>`.
 
+**Production installs exactly what `uv.lock` pins** (the deploy Dockerfile runs `uv export --locked`), except `certifi`, which it upgrades to the newest release on every update (see [Outbound TLS](#outbound-tls)). Otherwise the lock *is* the deployed dependency set: a transitive upgrade ships only when someone relocks, and a lock that has fallen behind `pyproject.toml` fails the image build. Tests run Celery eagerly (`CELERY_TASK_ALWAYS_EAGER`), so they never load the broker transport. After a relock that moves `celery`, `kombu`, `redis` or `billiard`, start a real worker against Redis before deploying. See the `kombu<5.7` note in `pyproject.toml` for the failure that slips through.
+
 ## Architecture
 
 This is a **Django 4.2** digital signage management system. There are four Django apps:
@@ -114,7 +116,7 @@ Celery broker/backend defaults to `redis://redis:6379/0`.
 
 ### Outbound TLS
 
-Every outbound HTTPS call — httpx (LSD, Graph), msal via requests (Entra, O365), httplib2 (`room_schedules/o365_requests.py`) — verifies against **certifi's bundle, not the OS trust store**. A CA distrust (e.g. the October 2026 eMudhra compromise) therefore reaches the app only through a certifi bump; updating the image's `ca-certificates` covers curl and stdlib `ssl` but not these clients. `certifi` is a direct dependency with a version floor for that reason: the deploy Dockerfile installs from `pyproject.toml`, not `uv.lock`, so the floor is what production honours.
+Every outbound HTTPS call — httpx (LSD, Graph), msal via requests (Entra, O365), httplib2 (`room_schedules/o365_requests.py`) — verifies against **certifi's bundle, not the OS trust store**. A CA distrust (e.g. the October 2026 eMudhra compromise) therefore reaches the app only through a certifi bump; updating the image's `ca-certificates` covers curl and stdlib `ssl` but not these clients. `certifi` is a direct dependency with a version floor for that reason, so no relock can fall back below it. **Production does not stop at the lock's certifi.** The deploy Dockerfile installs `uv.lock`'s pins, then upgrades certifi alone to its newest release. That step sits after a `CA_REFRESH` build arg, which `update.sh` sets fresh on every run, so it can't be served from the build cache, and a new bundle ships with the next update without a relock. The locked certifi is what dev and `test_trust_store.py` see.
 
 httplib2 consults `HTTPLIB2_CA_CERTS`, then certifi, then its **own bundled `cacerts.txt`** — a stale root list that still trusts the eMudhra-affected AAA root. `advertising/tests/test_trust_store.py` fails if httplib2 stops resolving to certifi, or if certifi regains a distrusted root.
 
