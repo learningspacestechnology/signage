@@ -76,7 +76,11 @@ If a file is rejected, it will be one of these:
 On the **Content** list you can:
 
 - **Search** by name.
-- **Filter by playlist**, to see everything currently in one playlist.
+- **Filter by playlist**, to see everything currently in one playlist. The
+  first choice, **Not in any playlist**, shows content that isn't in any
+  playlist and so isn't showing on any screen — handy for tidying up old
+  uploads. Content that's in another team's playlist doesn't count as unused,
+  even if you can't see that playlist: it's still playing somewhere.
 - **Filter by type**, to see just images, videos or websites.
 - **Browse by date** using the year/month links along the top, which work on the
   date the item was uploaded.

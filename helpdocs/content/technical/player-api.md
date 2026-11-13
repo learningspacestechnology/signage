@@ -135,7 +135,9 @@ whether one has a ticker.
 | Endpoint | Returns |
 |---|---|
 | `/event_schedules/` | Routes the caller to its own room, building or group |
-| `/event_schedules/<building>/<room>` | One room's screen |
+| `/event_schedules/<building>/<room>` | One room's screen, Standard layout |
+| `/event_schedules/<building>/<room>/screen` | One room's screen, Screen layout |
+| `/event_schedules/<building>/<room>/tablet` | One room's screen, Tablet layout |
 | `/event_schedules/<building>` | A building grid |
 | `/event_schedules/<building>/foyer` | A building foyer list |
 | `/event_schedules/<building>/group/<id>` | A room group grid |
@@ -145,15 +147,18 @@ whether one has a ticker.
 | `/event_schedules/diagnostic` | Browser capability report |
 
 `/event_schedules/` with nothing after it is the address you configure on a room
-display: it resolves the caller's IP to a room, building or group and redirects.
-That's why registering the IP is the whole of the configuration.
+display: it resolves the caller's IP to a room, building or group and redirects
+to that target's **Default display** — grid or foyer for a building or group,
+Standard, Screen or Tablet for a room. That's why registering the IP is the whole
+of the configuration. The device then refreshes the address it was redirected to,
+so a changed layout only reaches it when it next loads the entry point.
 
 Room screens poll a state endpoint roughly every ten seconds and reload when
 bookings change, which is why a new booking appears on the screen within seconds
 rather than waiting for the next calendar pull.
 
-Add `?compact=1` to a room screen's address to force the compact layout on old
-hardware.
+Add `?compact=1` to a Standard room screen's address to force the compact layout
+on old hardware. The Screen and Tablet layouts have no compact variant.
 
 ## Media
 

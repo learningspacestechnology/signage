@@ -142,14 +142,17 @@ dark, when it came back, and why. Kept for {{ config.SCREEN_HISTORY_DAYS }} days
 except that a screen's most recent change is never removed, so "offline since
 last Tuesday" stays answerable however long it has been.
 
-## Previewing a screen
+## Checking what a screen should be showing
 
-Open the screen and scroll to **Preview** for a live view of exactly what it is
-showing right now, embedded in the page. **View on site** opens the same thing
-full size in a new tab.
+Open the screen and use **View on site**. It plays, in a new tab, what the
+system is sending to that screen right now — its schedule, playlists,
+interspersed content and ticker, as the display would put them together.
 
 This is the quickest way to confirm a schedule change did what you meant, without
-walking to the display.
+walking to the display. It is **not** a picture of the display itself: it shows
+what the screen *should* be showing. If the display is off, frozen or
+disconnected, this tab still looks fine. To find out whether the display is
+actually working, check its **Status** (above).
 
 ## Finding screens
 

@@ -78,13 +78,13 @@ Leave any override blank to keep the preset's value for that one thing.
 - **Front-load the important part.** Someone glancing at the screen sees the
   start of the message, not the end.
 - **Check the speed.** Fast enough to come round often, slow enough to read.
-  Preview it before leaving.
+  Check it with **View on site** before leaving.
 {% endif %}
 
 ## Checking it
 
-Use **Preview** on the screen form, or **View on site**, to see the ticker
-running over the real content. Judge it there rather than guessing.
+Use **View on site** on the screen form to see the ticker running over the
+real content. Judge it there rather than guessing.
 
 ## Turning it off
 

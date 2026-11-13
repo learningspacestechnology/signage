@@ -185,6 +185,12 @@ SHOTS = (
         path='/admin/room_schedules/room/{room_id}/change/',
         wait_for=FORM,
         full_page=True,
+        # As screen-form: the sticky submit row would land across the Display
+        # fieldset.
+        run_js=(
+            "const row = document.getElementById('submit-row');"
+            "if (row) { row.style.display = 'none'; }"
+        ),
     ),
     Shot(
         name='building-grid',
@@ -200,6 +206,21 @@ SHOTS = (
         # Room screens are built for portrait tablets, but a full-height capture
         # is mostly empty below the booking list.
         viewport=(1080, 900),
+        settle_ms=900,
+    ),
+    Shot(
+        name='room-layout-screen',
+        path='/event_schedules/{building_id}/{bookable_room_id}/screen',
+        as_user=ANONYMOUS,
+        viewport=(1600, 900),
+        settle_ms=900,
+    ),
+    Shot(
+        name='room-layout-tablet',
+        path='/event_schedules/{building_id}/{bookable_room_id}/tablet',
+        as_user=ANONYMOUS,
+        # The layout's own canvas size; it scales to fit anything else.
+        viewport=(1280, 800),
         settle_ms=900,
     ),
 

@@ -148,8 +148,8 @@ PAGES = (
     ),
     Page(
         audience=USERS, slug='screens', section='Scheduling & screens',
-        summary='Adding a screen, previewing what it shows, and reading its '
-                'status when it stops reporting.',
+        summary='Adding a screen, checking what it should be showing, and '
+                'reading its status when it stops reporting.',
         admin_url_names=(
             'screens_screen_changelist',
             'screens_screen_change',

@@ -1,6 +1,5 @@
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
-from django.template.loader import get_template
 from django.urls import reverse
 from datetime import timedelta
 from django.db.models import Case, CharField, F, OuterRef, Q, Subquery, Value, When
@@ -377,13 +376,6 @@ class Screen(models.Model):
     def online(self):
         return self.status() == ScreenStatus.ONLINE
     online.boolean = True
-
-    def screen_preview(self):
-        if self.id:
-            return get_template("screens/screen_preview.html").render({"screen_url": self.get_absolute_url()})
-
-    screen_preview.short_description = 'Preview'
-        
 
     def __str__(self):
         return self.name

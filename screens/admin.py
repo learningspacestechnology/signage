@@ -306,13 +306,28 @@ class ScheduleDisplay(HideChangeFormDeleteMixin, TeamScopedAdminMixin, ModelAdmi
 
 
 class PlaylistListFilter(admin.SimpleListFilter):
+    """Filter content by playlist, including content that is in none.
+
+    "Not in any playlist" finds content that never reaches a screen, typically
+    to tidy it up. It means no playlist *at all*, not none the reader can see:
+    an item in another team's playlist is still playing somewhere, and the
+    Playlists column, which is not team-scoped either, already names that
+    playlist. Treating it as unused would invite deleting another team's
+    content.
+    """
+
     title = "In Playlist"
     parameter_name = "playlist"
+    NO_PLAYLIST = "none"
 
     def lookups(self, request, model_admin):
-        return scope_to_active_team(Playlist.objects.all(), request).values_list("id", "name")
+        return [(self.NO_PLAYLIST, "Not in any playlist"),
+                *scope_to_active_team(Playlist.objects.all(), request)
+                .values_list("id", "name")]
 
     def queryset(self, request, queryset):
+        if self.value() == self.NO_PLAYLIST:
+            return queryset.filter(playlistentry__isnull=True)
         if self.value() is None:
             return queryset
         return queryset.filter(playlistentry__playlist__id=self.value())
@@ -699,7 +714,7 @@ STATUS_HISTORY_SHOWN = 15
 
 @admin.register(Screen)
 class ScreenAdmin(TeamScopedAdminMixin, ModelAdmin):
-    readonly_fields = ('screen_preview', INTERSPERSED_UNAVAILABLE_FIELD,
+    readonly_fields = (INTERSPERSED_UNAVAILABLE_FIELD,
                        'show_status', 'show_status_detail', 'status_history',
                        'last_seen', 'last_ping_ok', 'last_ping_attempt')
     list_display = ('name', 'ip', 'show_status', 'show_status_detail', 'last_seen',
@@ -728,10 +743,14 @@ class ScreenAdmin(TeamScopedAdminMixin, ModelAdmin):
     # the *related* admin, so an operator without it gets a silently empty
     # picker.
     form = ScreenAdminForm
+    # No embedded preview of the player here, deliberately. It rendered what
+    # the schedule says the screen *should* show, on a page operators open to
+    # find out what the screen *is* showing, and was read as the latter.
+    # Status is the evidence about the device; View on site remains for
+    # checking the configuration.
     fieldsets = (
         (None, {
-            'fields': ('name', 'schedule', 'ip', 'building', 'room', 'teams',
-                       'screen_preview'),
+            'fields': ('name', 'schedule', 'ip', 'building', 'room', 'teams'),
         }),
         ('Status', {
             'fields': ('show_status', 'show_status_detail',
