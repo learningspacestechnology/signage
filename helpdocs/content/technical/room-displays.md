@@ -38,8 +38,8 @@ Buildings and room groups can be shown in either of two layouts:
 
 ![A building grid display](screenshot:building-grid)
 
-Set the **Default display** on the building or group. A single room always uses
-the room layout.
+Set the **Default display** on the building or group. A single room has layouts
+of its own — see [Choosing a room layout](#choosing-a-room-layout).
 
 ## Setting up a building
 
@@ -72,10 +72,51 @@ so you can check your changes immediately.
    bookings. Leave it blank for a room whose bookings you manage by hand.
 6. **Allow booking** lets people book the room from the display itself — see
    [Booking a room from its screen](help:booking-a-room).
-7. Set **Pagination duration** and the **Screensaver** options as for a building.
-8. Save.
+7. Under **Display**, choose the **Default display** — Standard, Screen or
+   Tablet. See [Choosing a room layout](#choosing-a-room-layout).
+8. Set **Pagination duration** and the **Screensaver** options as for a
+   building. These only affect the Standard layout.
+9. Save.
 
 ![A room's settings](screenshot:room-form)
+
+The **Standard**, **Screen** and **Tablet** buttons on the rooms list open each
+layout for that room, whichever one it is set to, so you can compare them before
+choosing.
+
+## Choosing a room layout
+
+A room can be shown in any of three layouts. All three show the same bookings,
+offer **Book Now** under the same conditions, hide private booking subjects, and
+drive the status light. What differs is how they look and which settings they
+honour.
+
+| Layout | What it looks like | Best for |
+|---|---|---|
+| **Standard** | A list of the day's bookings, with the current one enlarged | Most room screens. The default. |
+| **Screen** | A large coloured banner — *Available*, *Busy Soon* or *In Use* — with a live countdown, a progress bar, the next booking and the day's schedule beneath. Stretches to fill the display. | Widescreen displays that should read from across a corridor |
+| **Tablet** | The same banner design, laid out for a 1280×800 tablet and scaled to fit | Wall-mounted tablets, especially ones used for booking |
+
+![The Screen layout](screenshot:room-layout-screen)
+
+![The Tablet layout](screenshot:room-layout-tablet)
+
+The Standard layout is pictured on
+[Booking a room from its screen](help:booking-a-room).
+
+Only **Standard** uses the **Pagination duration**, the **Screensaver** and
+compact mode for older hardware. Screen and Tablet ignore all three, so leave
+them at their defaults when choosing either.
+
+Set the layout with **Default display** on the room. New rooms start on
+Standard, as did every room before the choice existed.
+
+!!! warning "A running display doesn't switch layout by itself"
+    The display's address is the room-schedules entry point, which looks up the
+    device and sends it on to the chosen layout's own address. From then on the
+    device refreshes *that* address, not the entry point. So after changing
+    **Default display** — on a room, building or group — restart the device, or
+    reload its browser at the entry point, before expecting it to change.
 
 ## Grouping rooms together
 
@@ -99,7 +140,8 @@ With the screensaver enabled, the display alternates between the bookings and a
 plain image. Content shows for the **pagination duration**, the screensaver shows
 for the **screensaver duration**, then it repeats.
 
-This is mainly there to protect displays that show the same thing all day.
+This is mainly there to protect displays that show the same thing all day. On a
+room, it applies only to the Standard layout.
 
 ## Private bookings
 

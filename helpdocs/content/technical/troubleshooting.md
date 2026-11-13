@@ -109,6 +109,13 @@ Check whether the room was moved to another building. A group requires all its
 members to share the group's building, so moving a room out silently removes it
 from that group. Move it back, or re-add it to a group in its new building.
 
+### A display didn't change after changing its layout
+
+The device was sent to its layout's own address when it started, and keeps
+refreshing that address. Restart the device, or reload its browser at the
+room-schedules entry point, and it picks up the new **Default display**. This
+applies to rooms, buildings and room groups alike.
+
 ### Book Now doesn't appear
 
 All four must hold: the room is free now, the next booking isn't within 15

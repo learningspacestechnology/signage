@@ -54,9 +54,11 @@ Add the IP address on the **IP addresses** section of:
     than one, never none. This is enforced by the database as well as the form,
     so a partially-filled row is rejected outright.
 
-Whether the display then shows a grid or a foyer list comes from the target's
-**Default display** setting, not from the IP record — see
-[Room and building displays](help:room-displays).
+Which layout the display then shows — grid or foyer for a building or group;
+Standard, Screen or Tablet for a room — comes from the target's **Default
+display** setting, not from the IP record — see
+[Room and building displays](help:room-displays). The device picks the layout up
+when it loads the entry point, so restart it after changing that setting.
 
 ## How access control affects displays
 
@@ -84,7 +86,8 @@ Some fixed-purpose displays run old browsers. Two things help:
 
 - **Compact mode.** Add `?compact=1` to a room screen's address to force the
   compact layout. It is applied automatically for the oldest known browsers, but
-  the override is there when detection doesn't catch one.
+  the override is there when detection doesn't catch one. It exists only for
+  the Standard room layout.
 - **The diagnostic page.** The room-schedules area has a diagnostic page that
   reports what the device's browser actually supports. Load it on a device that
   renders badly before assuming the display is broken — it usually identifies a
