@@ -14,9 +14,10 @@ at all — the content is not the problem. See
 schedule, and open that. Does its default playlist have content in it? Is a rule
 active right now that points at an empty playlist?
 
-**Preview it.** Open the screen and scroll to **Preview**. If the preview shows
-the right thing but the display doesn't, the problem is at the display, not in
-your configuration.
+**Compare it with what the system is sending.** Open the screen and use **View on
+site**. That shows what the screen *should* be showing. If it shows the right
+thing but the display doesn't, the problem is at the display, not in your
+configuration.
 
 !!! note "One item held for a long time is normal"
     A playlist with exactly one piece of content holds it for an hour instead of
@@ -49,7 +50,8 @@ have to publish anything.
 - Renaming content changes nothing on screen — the name is only ever seen by you.
 
 If it still hasn't appeared after five minutes, confirm the screen is online and
-use **Preview** to see what the system thinks it should be showing.
+use **View on site** on the screen to see what the system thinks it should be
+showing.
 
 ## The screen says it isn't configured
 

@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../../home/vscode/signage_deploy"
+		},
+		{
+			"path": "../../tmp/claude-1000/-workspaces-advertising-screens"
+		}
+	],
+	"settings": {}
+}
