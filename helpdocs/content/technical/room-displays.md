@@ -31,10 +31,11 @@ There are three kinds:
 
 Buildings and room groups can be shown in either of two layouts:
 
-- **Grid** — an hour-by-hour timetable, with a column per hour and a row per
-  room. Best for planning at a glance.
-- **Foyer** — a summary list of what's on, paging through if there's more than
-  fits. Best for readability from a distance.
+- **Grid** — an hour-by-hour timetable of the whole day, with a column per hour
+  and a row per room. Bookings stay on it after they finish, and the one
+  happening now is highlighted. Best for planning at a glance.
+- **Foyer** — a summary list of what's on now and still to come, paging through
+  if there's more than fits. Best for readability from a distance.
 
 ![A building grid display](screenshot:building-grid)
 
@@ -49,8 +50,10 @@ of its own — see [Choosing a room layout](#choosing-a-room-layout).
     - **Default display** — Grid or Foyer.
     - **Grid start hour** and **Grid end hour** — the span of the day shown on
       the timetable, on a 24-hour clock. The default 8 to 18 gives a ten-hour
-      day. A narrower range gives each booking more room; **anything outside the
-      range is cut off**, so make sure it covers your real booking hours.
+      day. A narrower range gives each booking more room, but **anything outside
+      the range is cut off**: a booking running past either end is cut short at
+      it, and one wholly outside isn't shown at all. Make sure the range covers
+      your real booking hours.
     - **Pagination duration** — how long each page is held before moving to the
       next.
 4. Under **Screensaver**, optionally enable it and set how long it shows for.
@@ -94,7 +97,7 @@ honour.
 | Layout | What it looks like | Best for |
 |---|---|---|
 | **Standard** | A list of the day's bookings, with the current one enlarged | Most room screens. The default. |
-| **Screen** | A large coloured banner — *Available*, *Busy Soon* or *In Use* — with a live countdown, a progress bar, the next booking and the day's schedule beneath. Stretches to fill the display. | Widescreen displays that should read from across a corridor |
+| **Screen** | A navy University masthead with the logo and clock, over a large coloured banner — *Available*, *Busy Soon* or *In Use* — with a live countdown, a progress bar, the next booking and the day's schedule beneath. Stretches to fill the display. | Widescreen displays that should read from across a corridor |
 | **Tablet** | The same banner design, laid out for a 1280×800 tablet and scaled to fit | Wall-mounted tablets, especially ones used for booking |
 
 ![The Screen layout](screenshot:room-layout-screen)
