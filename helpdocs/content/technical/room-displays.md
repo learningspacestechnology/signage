@@ -97,7 +97,7 @@ honour.
 | Layout | What it looks like | Best for |
 |---|---|---|
 | **Standard** | A list of the day's bookings, with the current one enlarged | Most room screens. The default. |
-| **Screen** | A navy University masthead with the logo and clock, over a large coloured banner — *Available*, *Busy Soon* or *In Use* — with a live countdown, a progress bar, the next booking and the day's schedule beneath. Stretches to fill the display. | Widescreen displays that should read from across a corridor |
+| **Screen** | A navy University masthead with the logo, clock and date, over a large coloured banner — *Available*, *Busy Soon* or *In Use* — with a live countdown, a progress bar, the next booking and the day's schedule beneath. Stretches to fill the display. | Widescreen displays that should read from across a corridor |
 | **Tablet** | The same banner design, laid out for a 1280×800 tablet and scaled to fit | Wall-mounted tablets, especially ones used for booking |
 
 ![The Screen layout](screenshot:room-layout-screen)
